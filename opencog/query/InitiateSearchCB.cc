@@ -32,6 +32,7 @@
 
 #include "InitiateSearchCB.h"
 #include "PatternMatchEngine.h"
+#include "PatternMatchCallbackThreadSafe.h"
 
 using namespace opencog;
 
@@ -389,18 +390,24 @@ bool InitiateSearchCB::neighbor_search(PatternMatchEngine *pme)
 		// get_incoming_set(), so that, e.g. it gets sorted by attentional
 		// focus in the AttentionalFocusCB class...
 		IncomingSet iset = get_incoming_set(best_start);
-		size_t sz = iset.size();
-		for (size_t i = 0; i < sz; i++)
-		{
-			Handle h(iset[i]);
-			DO_LOG({LAZY_LOG_FINE << "xxxxxxxxxx neighbor_search xxxxxxxxxx\n"
-			              << "Loop candidate (" << i+1 << "/" << sz << "):\n"
-			              << h->to_string();})
-			bool found = pme->explore_neighborhood(_root, _starter_term, h);
 
+		PatternMatchCallbackThreadSafe pmc_thread_safe(pme->get_pmc());
+
+		OMP_ALGO::for_each(iset.begin(), iset.end(), [this, &pme, &pmc_thread_safe](LinkPtr& link) {
+		    PatternMatchEngine thread_pme(pmc_thread_safe);
+		    thread_pme.set_pattern(*pme);
+
+			Handle h(link);
+			// TODO: to think how to log process correctly
+			DO_LOG({LAZY_LOG_FINE << "xxxxxxxxxx neighbor_search xxxxxxxxxx\n"
+			              << "Loop candidate (" << h->to_string() << "):\n"
+			              << h->to_string();})
+			thread_pme.explore_neighborhood(_root, _starter_term, h);
+
+			// TODO: how to do it correctly?
 			// Terminate search if satisfied.
-			if (found) return true;
-		}
+			//if (found) return true;
+		});
 	}
 
 	// If we are here, we have searched the entire neighborhood, and

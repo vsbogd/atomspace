@@ -2156,6 +2156,8 @@ PatternMatchEngine::PatternMatchEngine(PatternMatchCallback& pmcb)
 	// unordered link state
 	have_more = false;
 	take_step = true;
+
+	clause_accepted = false;
 }
 
 void PatternMatchEngine::set_pattern(const Variables& v,
@@ -2163,6 +2165,12 @@ void PatternMatchEngine::set_pattern(const Variables& v,
 {
 	_varlist = &v;
 	_pat = &p;
+}
+
+void PatternMatchEngine::set_pattern(const PatternMatchEngine& pme)
+{
+	_varlist = pme._varlist;
+	_pat = pme._pat;
 }
 
 /* ======================================================== */

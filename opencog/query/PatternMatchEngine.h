@@ -231,6 +231,7 @@ private:
 public:
 	PatternMatchEngine(PatternMatchCallback&);
 	void set_pattern(const Variables&, const Pattern&);
+	void set_pattern(const PatternMatchEngine& pme);
 
 	// Examine the locally connected neighborhood for possible
 	// matches.
@@ -240,6 +241,8 @@ public:
 	// PatternMatchCallback. It is assumed that all clauses are
 	// connected by an AndLink.
 	bool explore_constant_evaluatables(const HandleSeq& clauses);
+
+	PatternMatchCallback& get_pmc() { return _pmc; }
 
 	// Handy-dandy utilities
 	static void log_solution(const HandleMap &vars,
