@@ -363,7 +363,7 @@ size_t Atom::getIncomingSetSize() const
     std::lock_guard<std::mutex> lck (_mtx);
 
     size_t cnt = 0;
-    for (const auto pr : _incoming_set->_iset)
+    for (const auto &pr : _incoming_set->_iset)
         cnt += pr.second.size();
     return cnt;
 }
