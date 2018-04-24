@@ -35,6 +35,11 @@ if (COGUTIL_LIBRARY AND HAVE_COGUTIL_H)
 	SET(COGUTIL_VERSION ${CMAKE_MATCH_1})
 endif (COGUTIL_LIBRARY AND HAVE_COGUTIL_H)
 
+if(${COGUTIL_VERSION} VERSION_LESS "${CogUtil_FIND_VERSION}")
+    message( STATUS "Found CogUtil version ${COGUTIL_VERSION}, required CogUtil version ${CogUtil_FIND_VERSION}")
+    set(COGUTIL_FOUND FALSE)
+endif()
+
 if ( COGUTIL_FOUND )
 	message( STATUS "Found CogUtil version ${COGUTIL_VERSION} at ${COGUTIL_LIBRARY}")
 else ( COGUTIL_FOUND )

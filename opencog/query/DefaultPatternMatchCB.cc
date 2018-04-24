@@ -119,11 +119,11 @@ void DefaultPatternMatchCB::release_transient_atomspace(AtomSpace* atomspace)
 /* ======================================================== */
 
 DefaultPatternMatchCB::DefaultPatternMatchCB(AtomSpace* as) :
-	_classserver(classserver())
+	_classserver(classserver()),
+	scoped_vars([]{ return new ScopedVariables(); }),
+	temp_atomspace([as]{ return new TempAtomSpace(as); }),
+	_optionals_present(false)
 {
-	_temp_aspace = grab_transient_atomspace(as);
-	_instor = new Instantiator(_temp_aspace);
-
 	_connectives.insert(SEQUENTIAL_AND_LINK);
 	_connectives.insert(SEQUENTIAL_OR_LINK);
 	_connectives.insert(AND_LINK);
@@ -131,29 +131,14 @@ DefaultPatternMatchCB::DefaultPatternMatchCB(AtomSpace* as) :
 	_connectives.insert(NOT_LINK);
 
 	_as = as;
-	_pat_bound_vars = nullptr;
-	_gnd_bound_vars = nullptr;
-}
 
-DefaultPatternMatchCB::~DefaultPatternMatchCB()
-{
-	// If we have a transient atomspace, release it.
-	if (_temp_aspace)
-	{
-		release_transient_atomspace(_temp_aspace);
-		_temp_aspace = NULL;
-	}
-
-	// Delete the instantiator.
-	delete _instor;
+	_have_variables = false;
 }
 
 #ifdef CACHED_IMPLICATOR
 void DefaultPatternMatchCB::ready(AtomSpace* as)
 {
-	_temp_aspace = grab_transient_atomspace(as);
-	_instor->ready(_temp_aspace);
-
+    temp_atomspace.get()->set_parent_atomspace(as);
 	_as = as;
 }
 
@@ -167,9 +152,7 @@ void DefaultPatternMatchCB::clear()
 	_have_variables = false;
 	_pattern_body = Handle::UNDEFINED;
 
-	release_transient_atomspace(_temp_aspace);
-	_temp_aspace = NULL;
-	_instor->clear();
+	temp_atomspace.get()->clear();
 
 	_optionals_present = false;
 	_as = NULL;
@@ -234,12 +217,9 @@ bool DefaultPatternMatchCB::scope_match(const Handle& npat_h,
 {
 	// If there are scoped vars, then accept anything that is
 	// alpha-equivalent. (i.e. equivalent after alpha-conversion)
-	if (_pat_bound_vars and _pat_bound_vars->is_in_varset(npat_h))
-	{
-		bool aok = _pat_bound_vars->is_alpha_convertible(npat_h,
-		                  nsoln_h, *_gnd_bound_vars);
-		return aok;
-	}
+    ScopedVariables& scoped_vars = this->scoped_vars.get();
+    if (scoped_vars.is_set() and scoped_vars.is_in_varset(npat_h))
+		return scoped_vars.is_alpha_convertible(npat_h, nsoln_h);
 
 	// Else, these need to be an exact match...
 	return npat_h == nsoln_h;
@@ -290,24 +270,23 @@ bool DefaultPatternMatchCB::link_match(const PatternTermPtr& ptm,
 		// scoped links. The correct fix would be to push these onto a
 		// stack, and then alter scope_match() to walk the stack,
 		// verifying alpha-convertability.
-		OC_ASSERT(nullptr == _pat_bound_vars,
+		OC_ASSERT(!scoped_vars.get().is_set(),
 			"Not implemented! Need to implement a stack, here.");
-		_pat_bound_vars = & ScopeLinkCast(lpat)->get_variables();
-		_gnd_bound_vars = & ScopeLinkCast(lsoln)->get_variables();
+		const Variables* pattern_vars = & ScopeLinkCast(lpat)->get_variables();
+		const Variables* grounding_vars = & ScopeLinkCast(lsoln)->get_variables();
 
 		// This is interesting: the ground term need only satisfy
 		// the pattern typing requirements.  We do not ask for equality:
 		//     if (not _pat_bound_vars->is_equal(*_gnd_bound_vars))
 		// because that prevents searches for narrowly-typed grounds
 		// (as is done in the ForwardChainerUTest, see bug #934)
-		if (*_pat_bound_vars != *_gnd_bound_vars
-		    and not _pat_bound_vars->is_type(_gnd_bound_vars->varseq))
+		if (*pattern_vars == *grounding_vars
+		    or pattern_vars->is_type(grounding_vars->varseq))
 		{
-			_pat_bound_vars = nullptr;
-			_gnd_bound_vars = nullptr;
-			return false;
+		    scoped_vars.get().set(pattern_vars, grounding_vars);
+			return true;
 		}
-		return true;
+		return false;
 	}
 
 	// No reason to reject; proceed with the compare.
@@ -318,11 +297,8 @@ bool DefaultPatternMatchCB::post_link_match(const Handle& lpat,
                                             const Handle& lgnd)
 {
 	Type pattype = lpat->get_type();
-	if (_pat_bound_vars and _classserver.isA(pattype, SCOPE_LINK))
-	{
-		_pat_bound_vars = nullptr;
-		_gnd_bound_vars = nullptr;
-	}
+	if (scoped_vars.get().is_set() and _classserver.isA(pattype, SCOPE_LINK))
+	    scoped_vars.get().clear();
 
 	// The if (STATE_LINK) below is a temp hack until we get a nicer
 	// solution, viz, get around to implementing executable terms in
@@ -358,11 +334,8 @@ void DefaultPatternMatchCB::post_link_mismatch(const Handle& lpat,
                                                const Handle& lgnd)
 {
 	Type pattype = lpat->get_type();
-	if (_pat_bound_vars and _classserver.isA(pattype, SCOPE_LINK))
-	{
-		_pat_bound_vars = nullptr;
-		_gnd_bound_vars = nullptr;
-	}
+	if (scoped_vars.get().is_set() and _classserver.isA(pattype, SCOPE_LINK))
+	    scoped_vars.get().clear();
 }
 
 /// is_self_ground() -- Reject clauses that are grounded by themselves.
@@ -378,7 +351,7 @@ bool DefaultPatternMatchCB::is_self_ground(const Handle& ptrn,
                                            const Handle& grnd,
                                            const HandleMap& term_gnds,
                                            const HandleSet& varset,
-                                           Quotation quotation)
+                                           Quotation quotation) const
 {
 	Type ptype = ptrn->get_type();
 
@@ -522,8 +495,8 @@ bool DefaultPatternMatchCB::clause_match(const Handle& ptrn,
 		// which seems reasonable, except that everything else in the
 		// default callback ignores the TV on EvaluationLinks. So this
 		// is kind-of schizophrenic here.  Not sure what else to do.
-		_temp_aspace->clear();
-		TruthValuePtr tvp(EvaluationLink::do_eval_scratch(_as, grnd, _temp_aspace));
+		TruthValuePtr tvp(EvaluationLink::do_eval_scratch(_as, grnd,
+		        temp_atomspace.get().get_clean_atomspace()));
 
 		DO_LOG({LAZY_LOG_FINE << "Clause_match evaluation yeilded tv"
 		              << std::endl << tvp->to_string() << std::endl;})
@@ -577,6 +550,7 @@ bool DefaultPatternMatchCB::eval_term(const Handle& virt,
 	// not very efficient, but will do for now...
 
 	Handle gvirt;
+    Instantiator* _instor = temp_atomspace.get().get_instantiator();
 	try
 	{
 		gvirt = _instor->instantiate(virt, gnds, true);
@@ -650,10 +624,10 @@ bool DefaultPatternMatchCB::eval_term(const Handle& virt,
 	}
 	else
 	{
-		_temp_aspace->clear();
 		try
 		{
-			tvp = EvaluationLink::do_eval_scratch(_as, gvirt, _temp_aspace, true);
+			tvp = EvaluationLink::do_eval_scratch(_as, gvirt,
+			        temp_atomspace.get().get_clean_atomspace(), true);
 		}
 		catch (const SilentException& ex)
 		{

@@ -33,7 +33,6 @@ class PatternMatchCallbackThreadSafe: public PatternMatchCallback {
 
 	PatternMatchCallback& delegate;
 
-	std::mutex evaluate_sentence_mutex;
 	std::mutex grounding_mutex;
 
 public:
@@ -78,7 +77,6 @@ public:
 	}
 
 	virtual bool evaluate_sentence(const Handle& eval, const HandleMap& gnds) {
-	    std::lock_guard<std::mutex> lock(evaluate_sentence_mutex);
 		return delegate.evaluate_sentence(eval, gnds);
 	}
 

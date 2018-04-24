@@ -386,29 +386,37 @@ bool InitiateSearchCB::neighbor_search(PatternMatchEngine *pme)
 		                  "UNDEFINED" : _starter_term->to_string());})
 		DO_LOG({LAZY_LOG_FINE << "Root clause is: " <<  _root->to_string();})
 
-		// This should be calling the over-loaded virtual method
-		// get_incoming_set(), so that, e.g. it gets sorted by attentional
-		// focus in the AttentionalFocusCB class...
-		IncomingSet iset = get_incoming_set(best_start);
+        // This should be calling the over-loaded virtual method
+        // get_incoming_set(), so that, e.g. it gets sorted by attentional
+        // focus in the AttentionalFocusCB class...
+        IncomingSet iset = get_incoming_set(best_start);
+        PatternMatchCallbackThreadSafe pmc_thread_safe(pme->get_pmc());
+        std::atomic<bool> found(false);
 
-		PatternMatchCallbackThreadSafe pmc_thread_safe(pme->get_pmc());
+        logger().set_thread_id_flag(true);
+        OMP_ALGO::for_each(iset.begin(), iset.end(),
+                [this, &pmc_thread_safe, &found, pme](LinkPtr& link)
+                {
+                    if (found.load())
+                    {
+                        return;
+                    }
 
-		OMP_ALGO::for_each(iset.begin(), iset.end(), [this, &pme, &pmc_thread_safe](LinkPtr& link) {
-		    PatternMatchEngine thread_pme(pmc_thread_safe);
-		    thread_pme.set_pattern(*pme);
+                    PatternMatchEngine pme_thread_local(pmc_thread_safe);
+                    pme_thread_local.set_pattern(*pme);
 
-			Handle h(link);
-			// TODO: to think how to log process correctly
-			DO_LOG({LAZY_LOG_FINE << "xxxxxxxxxx neighbor_search xxxxxxxxxx\n"
-			              << "Loop candidate (" << h->to_string() << "):\n"
-			              << h->to_string();})
-			thread_pme.explore_neighborhood(_root, _starter_term, h);
+                    Handle h(link);
+                    DO_LOG( {  LAZY_LOG_FINE << "xxxxxxxxxx neighbor_search xxxxxxxxxx\n"
+                                << "Loop next candidate:\n"
+                                << h->to_string();})
+                    if (pme_thread_local.explore_neighborhood(_root, _starter_term, h))
+                    found.store(true);
+                });
+        logger().set_thread_id_flag(false);
 
-			// TODO: how to do it correctly?
-			// Terminate search if satisfied.
-			//if (found) return true;
-		});
-	}
+        if (found.load())
+            return true;
+    }
 
 	// If we are here, we have searched the entire neighborhood, and
 	// no satisfiable groundings were found.

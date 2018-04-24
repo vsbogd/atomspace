@@ -25,6 +25,7 @@
 #ifndef _OPENCOG_DEFAULT_PATTERN_MATCH_H
 #define _OPENCOG_DEFAULT_PATTERN_MATCH_H
 
+#include <opencog/util/ThreadLocal.h>
 #include <opencog/atoms/base/types.h>
 #include <opencog/atoms/core/Quotation.h>
 #include <opencog/atoms/execution/Instantiator.h>
@@ -56,7 +57,6 @@ class DefaultPatternMatchCB : public virtual PatternMatchCallback
 {
 	public:
 		DefaultPatternMatchCB(AtomSpace*);
-		~DefaultPatternMatchCB();
 		virtual void set_pattern(const Variables&, const Pattern&);
 
 		virtual bool node_match(const Handle&, const Handle&);
@@ -105,17 +105,120 @@ class DefaultPatternMatchCB : public virtual PatternMatchCallback
 
 		bool is_self_ground(const Handle&, const Handle&,
 		                    const HandleMap&, const HandleSet&,
-		                    Quotation quotation=Quotation());
+		                    Quotation quotation=Quotation()) const;
 
-		// Variables that should be ignored, because they are bound
-		// (scoped) in the current context (i.e. appear in a ScopeLink
-		// that is being matched.)
-		const Variables* _pat_bound_vars;
-		const Variables* _gnd_bound_vars;
+        /**
+         * Variables that should be ignored, because they are bound
+         * (scoped) in the current context (i.e. appear in a ScopeLink
+         * that is being matched.)
+         */
+        class ScopedVariables
+        {
+            const Variables* pattern_vars = nullptr;
+            const Variables* grounding_vars = nullptr;
 
-		// Temp atomspace used for test-groundings of virtual links.
-		AtomSpace* _temp_aspace;
-		Instantiator* _instor;
+        public:
+
+            bool is_set() const noexcept
+            {
+                return pattern_vars != nullptr;
+            }
+
+            void set(const Variables* pattern_vars, const Variables* grounding_vars)
+                    noexcept
+            {
+                this->pattern_vars = pattern_vars;
+                this->grounding_vars = grounding_vars;
+            }
+
+            void clear() noexcept
+            {
+                pattern_vars = nullptr;
+                grounding_vars = nullptr;
+            }
+
+            bool is_alpha_convertible(const Handle& npat_h,
+                    const Handle& nsoln_h) const
+            {
+                return pattern_vars->is_alpha_convertible(npat_h, nsoln_h,
+                        *grounding_vars);
+            }
+
+            bool is_in_varset(const Handle& npat_h) const
+            {
+                return pattern_vars->is_in_varset(npat_h);
+            }
+        };
+        /**
+         * Thread local values to execute scope_match(), link_match(),
+         * post_link_match(), post_link_mismatch() methods independently.
+         */
+        ThreadLocal<ScopedVariables> scoped_vars;
+
+        /**
+         *  Temp atomspace used for test-groundings of virtual links.
+         */
+        class TempAtomSpace
+        {
+            AtomSpace* _temp_aspace;
+            Instantiator* _instor;
+
+        public:
+
+            TempAtomSpace(AtomSpace* parent_atomspace) :
+                    _temp_aspace(grab_transient_atomspace(parent_atomspace)), _instor(
+                            new Instantiator(_temp_aspace))
+            {
+            }
+
+            ~TempAtomSpace()
+            {
+                clear();
+            }
+
+            TempAtomSpace(const TempAtomSpace&) = delete;
+            TempAtomSpace(TempAtomSpace&&) = delete;
+            TempAtomSpace& operator=(const TempAtomSpace&) = delete;
+            TempAtomSpace& operator=(TempAtomSpace&&) = delete;
+
+            AtomSpace* get_clean_atomspace()
+            {
+                _temp_aspace->clear();
+                return _temp_aspace;
+            }
+
+            Instantiator* get_instantiator()
+            {
+                return _instor;
+            }
+
+            void clear()
+            {
+                // If we have a transient atomspace, release it.
+                if (_temp_aspace) {
+                    release_transient_atomspace(_temp_aspace);
+                    _temp_aspace = nullptr;
+                }
+                // Delete the instantiator.
+                if (_instor) {
+                    delete _instor;
+                    _instor = nullptr;
+                }
+            }
+
+#ifdef CACHED_IMPLICATOR
+            void set_parent_atomspace(AtomSpace* parent_atomspace)
+            {
+                _temp_aspace = grab_transient_atomspace(parent_atomspace);
+                _instor->ready(_temp_aspace);
+            }
+#endif
+        };
+        /**
+         * Thread local temporary atomspace to evaluate sentences from
+         * different threads independently
+         */
+        ThreadLocal<TempAtomSpace> temp_atomspace;
 
 		// The transient atomspace cache. The goal here is to
 		// avoid the overhead of constantly creating/deleting
@@ -135,7 +238,7 @@ class DefaultPatternMatchCB : public virtual PatternMatchCallback
 		bool eval_term(const Handle& pat, const HandleMap& gnds);
 		bool eval_sentence(const Handle& pat, const HandleMap& gnds);
 
-		bool _optionals_present = false;
+		std::atomic<bool> _optionals_present;
 		AtomSpace* _as;
 };
 

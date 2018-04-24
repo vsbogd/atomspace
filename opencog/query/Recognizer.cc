@@ -57,7 +57,7 @@ class Recognizer :
    public virtual DefaultPatternMatchCB
 {
 	private:
-		bool match = false;
+		std::atomic<bool> match;
 
 	protected:
 		const Pattern* _pattern;
@@ -72,7 +72,8 @@ class Recognizer :
 		HandleSet _rules;
 
 		Recognizer(AtomSpace* as) :
-			DefaultPatternMatchCB(as) {}
+			DefaultPatternMatchCB(as),
+			match(false) {}
 
 		virtual void set_pattern(const Variables& vars,
 		                         const Pattern& pat)
