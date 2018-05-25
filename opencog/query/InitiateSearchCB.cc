@@ -267,6 +267,9 @@ PatternTermPtr InitiateSearchCB::find_thinnest_term(const HandleSeq& clauses)
 		PatternTermPtr candidate = find_thinnest_term_recursive(root_term,
 		        depth, width);
 
+		if (candidate == PatternTerm::UNDEFINED)
+			continue;
+
 		if (width < min_width or (width == min_width and depth > max_depth))
 		{
 			max_depth = depth;
@@ -326,7 +329,7 @@ PatternTermPtr InitiateSearchCB::find_thinnest_term_recursive(
 		PatternTermPtr candidate = find_thinnest_term_recursive(outgoing_term,
 				width, depth);
 
-		if (!candidate || candidate == PatternTerm::UNDEFINED)
+		if (candidate == PatternTerm::UNDEFINED)
 			continue;
 
 		if (CHOICE_LINK == root_node_type)
@@ -344,7 +347,7 @@ PatternTermPtr InitiateSearchCB::find_thinnest_term_recursive(
 		}
 	}
 
-	if (thinnest_term)
+	if (thinnest_term != PatternTerm::UNDEFINED)
 	{
 		width = min_width;
 		depth = max_depth;
