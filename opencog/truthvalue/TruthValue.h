@@ -108,6 +108,8 @@ protected:
 public:
     virtual ~TruthValue() {}
 
+    virtual bool operator==(const ProtoAtom&) const = 0;
+
     static TruthValuePtr factory(Type, const std::vector<double>&);
     static TruthValuePtr factory(const ProtoAtomPtr&);
 
@@ -145,7 +147,6 @@ public:
     virtual count_t get_count()  const = 0;
 
     virtual TruthValuePtr clone() const  = 0;
-    virtual TruthValue* rawclone() const  = 0;
 
     /**
      * Merge this TV object with the given TV object argument.

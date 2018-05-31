@@ -553,7 +553,7 @@ bool DefaultPatternMatchCB::eval_term(const Handle& virt,
     Instantiator* _instor = temp_atomspace.get().get_instantiator();
 	try
 	{
-		gvirt = _instor->instantiate(virt, gnds, true);
+		gvirt = HandleCast(_instor->instantiate(virt, gnds, true));
 	}
 	catch (const SilentException& ex)
 	{

@@ -1,7 +1,9 @@
 /*
- * TimeLink.cc
+ * TruthValueOfLink.cc
  *
- * Copyright (C) 2015 Linas Vepstas
+ * Copyright (C) 2015, 2018 Linas Vepstas
+ *
+ * Author: Linas Vepstas <linasvepstas@gmail.com>  January 2009
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License v3 as
@@ -19,56 +21,46 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <time.h>
-#include <sys/time.h>
-
-#include <opencog/atoms/core/NumberNode.h>
-
-#include "TimeLink.h"
+#include "TruthValueOfLink.h"
 
 using namespace opencog;
 
-TimeLink::TimeLink(const HandleSeq& oset, Type t)
-	: FunctionLink(oset, t)
+TruthValueOfLink::TruthValueOfLink(const HandleSeq& oset, Type t)
+	: ValueOfLink(oset, t)
 {
-	// Type must be as expected
-	if (not nameserver().isA(t, TIME_LINK))
+	if (not nameserver().isA(t, TRUTH_VALUE_OF_LINK))
 	{
 		const std::string& tname = nameserver().getTypeName(t);
 		throw InvalidParamException(TRACE_INFO,
-			"Expecting an TimeLink, got %s", tname.c_str());
+			"Expecting an TruthValueOfLink, got %s", tname.c_str());
 	}
-
-	if (0 < oset.size())
-		throw SyntaxException(TRACE_INFO,
-			"TimeLink does not expect any arguments");
 }
 
-TimeLink::TimeLink(const Link &l)
-	: FunctionLink(l)
+TruthValueOfLink::TruthValueOfLink(const Link &l)
+	: ValueOfLink(l)
 {
 	// Type must be as expected
 	Type tscope = l.get_type();
-	if (not nameserver().isA(tscope, TIME_LINK))
+	if (not nameserver().isA(tscope, TRUTH_VALUE_OF_LINK))
 	{
 		const std::string& tname = nameserver().getTypeName(tscope);
 		throw InvalidParamException(TRACE_INFO,
-			"Expecting an TimeLink, got %s", tname.c_str());
+			"Expecting an TruthValueOfLink, got %s", tname.c_str());
 	}
 }
 
 // ---------------------------------------------------------------
 
-ProtoAtomPtr TimeLink::execute() const
+/// When executed, this will return the TruthValue
+ProtoAtomPtr TruthValueOfLink::execute() const
 {
-	// time_t now = time(nullptr);
-	struct timeval tv;
-	gettimeofday(&tv, nullptr);
-	double now = tv.tv_sec + 1.0e-6 * tv.tv_usec;
+	size_t ary = _outgoing.size();
+	if (1 != ary)
+		throw SyntaxException(TRACE_INFO, "Expecting one atom!");
 
-	return ProtoAtomPtr(createNumberNode(now));
+	return ProtoAtomCast(_outgoing[0]->getTruthValue());
 }
 
-DEFINE_LINK_FACTORY(TimeLink, TIME_LINK)
+DEFINE_LINK_FACTORY(TruthValueOfLink, TRUTH_VALUE_OF_LINK)
 
 /* ===================== END OF FILE ===================== */

@@ -24,10 +24,12 @@ ADD_LIBRARY (atomcore
 	SleepLink.cc
 	StateLink.cc
 	TimeLink.cc
+	TruthValueOfLink.cc
 	TypedAtomLink.cc
 	TypeNode.cc
 	UniqueLink.cc
 	UnorderedLink.cc
+	ValueOfLink.cc
 	Variables.cc
 	VariableList.cc
 )
@@ -65,10 +67,12 @@ INSTALL (FILES
 	SleepLink.h
 	StateLink.h
 	TimeLink.h
+	TruthValueOfLink.h
 	TypedAtomLink.h
 	TypeNode.h
 	UniqueLink.h
 	UnorderedLink.h
+	ValueOfLink.h
 	Variables.h
 	VariableList.h
 	DESTINATION "include/opencog/atoms/core"

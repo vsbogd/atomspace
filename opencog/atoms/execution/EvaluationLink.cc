@@ -28,6 +28,7 @@
 #include <opencog/atoms/core/LambdaLink.h>
 #include <opencog/atoms/core/NumberNode.h>
 #include <opencog/atoms/core/PutLink.h>
+#include <opencog/atoms/core/TruthValueOfLink.h>
 #include <opencog/atoms/execution/Instantiator.h>
 #include <opencog/atoms/pattern/PatternLink.h>
 #include <opencog/atoms/reduct/FoldLink.h>
@@ -123,6 +124,28 @@ static NumberNodePtr unwrap_set(Handle h)
 	return na;
 }
 
+static double get_numeric_value(const ProtoAtomPtr& pap)
+{
+	Type t = pap->get_type();
+	if (NUMBER_NODE == t or SET_LINK == t)
+	{
+		NumberNodePtr n(unwrap_set(HandleCast(pap)));
+		return n->get_value();
+	}
+
+	if (nameserver().isA(t, FLOAT_VALUE))
+	{
+		FloatValuePtr fv(FloatValueCast(pap));
+		if (fv->value().empty())
+			throw RuntimeException(TRACE_INFO, "FloatValue is empty!");
+		return fv->value()[0];
+	}
+
+	throw RuntimeException(TRACE_INFO,
+		"Don't know how to do arithmetic with this: %s",
+		pap->to_string().c_str());
+}
+
 // Perform a GreaterThan check
 static TruthValuePtr greater(AtomSpace* as, const Handle& h)
 {
@@ -132,13 +155,13 @@ static TruthValuePtr greater(AtomSpace* as, const Handle& h)
 		     "GreaterThankLink expects two arguments");
 
 	Instantiator inst(as);
-	Handle h1(inst.execute(oset[0]));
-	Handle h2(inst.execute(oset[1]));
+	ProtoAtomPtr pap0(inst.execute(oset[0]));
+	ProtoAtomPtr pap1(inst.execute(oset[1]));
 
-	NumberNodePtr n1(unwrap_set(h1));
-	NumberNodePtr n2(unwrap_set(h2));
+	double v0 = get_numeric_value(pap0);
+	double v1 = get_numeric_value(pap1);
 
-	if (n1->get_value() > n2->get_value())
+	if (v0 > v1)
 		return TruthValue::TRUE_TV();
 	else
 		return TruthValue::FALSE_TV();
@@ -167,8 +190,8 @@ static TruthValuePtr equal(AtomSpace* as, const Handle& h, bool silent)
 		     "EqualLink expects two arguments");
 
 	Instantiator inst(as);
-	Handle h0(inst.execute(oset[0], silent));
-	Handle h1(inst.execute(oset[1], silent));
+	Handle h0(HandleCast(inst.execute(oset[0], silent)));
+	Handle h1(HandleCast(inst.execute(oset[1], silent)));
 
 	if (h0 == h1)
 		return TruthValue::TRUE_TV();
@@ -274,7 +297,7 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 
 		// The arguments may need to be executed...
 		Instantiator inst(scratch);
-		Handle args(inst.execute(sna.at(1), silent));
+		Handle args(HandleCast(inst.execute(sna.at(1), silent)));
 
 		return do_evaluate(scratch, sna.at(0), args, silent);
 	}
@@ -421,7 +444,7 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 			else
 			{
 				Instantiator inst(as);
-				Handle result(inst.execute(term, silent));
+				Handle result(HandleCast(inst.execute(term, silent)));
 				scratch->add_atom(result);
 			}
 		}
@@ -451,7 +474,7 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 		Handle pvals = pl->get_values();
 		Instantiator inst(as);
 		// Step (1)
-		Handle gvals = inst.execute(pvals, silent);
+		Handle gvals(HandleCast(inst.execute(pvals, silent)));
 		if (gvals != pvals)
 		{
 			as->add_atom(gvals);
@@ -480,6 +503,30 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 		)
 	{
 		return evelnk->getTruthValue();
+	}
+	else if (TRUTH_VALUE_OF_LINK == t)
+	{
+		// If the truth value of the link is being requested,
+		// then ... compute the truth value, on the fly!
+		Handle ofatom = evelnk->getOutgoingAtom(0);
+		TruthValuePtr tvp(EvaluationLink::do_eval_scratch(as,
+		                    ofatom, scratch, silent));
+
+		// Cache the computed truth value...
+		// XXX FIXME: is this a good idea, or not?
+		evelnk->setTruthValue(tvp);
+		return tvp;
+	}
+
+	else if (nameserver().isA(t, VALUE_OF_LINK))
+	{
+		ProtoAtomPtr pap(ValueOfLinkCast(evelnk)->execute());
+		// If it's an atom, recursively evaluate.
+		if (pap->is_atom())
+			return EvaluationLink::do_eval_scratch(as,
+			                    HandleCast(pap), scratch, silent);
+
+		return TruthValueCast(pap);
 	}
 
 	// We get exceptions here in two differet ways: (a) due to user
