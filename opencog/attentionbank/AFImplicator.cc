@@ -1,8 +1,5 @@
 /*
- * opencog/atoms/base/StringValue.cc
- *
- * Copyright (C) 2015, 2016 Linas Vepstas
- * All Rights Reserved
+ * AFImplicator.cc
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License v3 as
@@ -20,30 +17,30 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <opencog/atoms/base/StringValue.h>
+#include "AFImplicator.h"
+#include <opencog/query/DefaultImplicator.h>
 
 using namespace opencog;
 
-bool StringValue::operator==(const ProtoAtom& other) const
+// XXX FIXME -- do we need this function, at all?  Why isn't it
+// sufficient to just do a normal pattern search, and weed out
+// the atttention focus after the fact? I find it very hard to
+// beleive that this provides any significant performance kick
+// over a simpler, more modular design.
+
+namespace opencog
 {
-	if (STRING_VALUE != other.get_type()) return false;
 
-	const StringValue* sov = (const StringValue*) &other;
-
-	if (_value.size() != sov->_value.size()) return false;
-	size_t len = _value.size();
-	for (size_t i=0; i<len; i++)
-		if (_value[i] != sov->_value[i]) return false;
-	return true;
+/**
+ * Attentional Focus specific PatternMatchCallback implementation
+ */
+Handle af_bindlink(AtomSpace* as, const Handle& hbindlink)
+{
+	// Now perform the search.
+	AFImplicator impl(as);
+	return do_imply(as, hbindlink, impl, false);
 }
 
-// ==============================================================
-
-std::string StringValue::to_string(const std::string& indent) const
-{
-	std::string rv = indent + "(StringValue";
-	for (std::string v :_value)
-		rv += std::string(" \"") + v + "\"";
-	rv += ")\n";
-	return rv;
 }
+
+/* ===================== END OF FILE ===================== */

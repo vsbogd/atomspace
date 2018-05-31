@@ -46,7 +46,7 @@ using namespace opencog;
 /* ======================================================== */
 
 InitiateSearchCB::InitiateSearchCB(AtomSpace* as) :
-	_classserver(classserver())
+	_nameserver(nameserver())
 {
 #ifdef CACHED_IMPLICATOR
 	InitiateSearchCB::clear();
@@ -155,7 +155,7 @@ InitiateSearchCB::find_starter(const Handle& h, size_t& depth,
 {
 	// If its a node, then we are done.
 	Type t = h->get_type();
-	if (_classserver.isNode(t))
+	if (_nameserver.isNode(t))
 	{
 		if (VARIABLE_NODE != t and GLOB_NODE != t)
 		{
@@ -177,7 +177,7 @@ InitiateSearchCB::find_starter_recursive(const Handle& h, size_t& depth,
 	// If its a node, then we are done. Don't modify either depth or
 	// start.
 	Type t = h->get_type();
-	if (_classserver.isNode(t))
+	if (_nameserver.isNode(t))
 	{
 		if (VARIABLE_NODE != t and GLOB_NODE != t)
 		{
@@ -196,7 +196,6 @@ InitiateSearchCB::find_starter_recursive(const Handle& h, size_t& depth,
 	// the search there.  If there are two at the same depth,
 	// then start with the skinnier one.
 	size_t deepest = depth;
-	startrm = Handle::UNDEFINED;
 	Handle hdeepest(Handle::UNDEFINED);
 	size_t thinnest = SIZE_MAX;
 
@@ -204,7 +203,12 @@ InitiateSearchCB::find_starter_recursive(const Handle& h, size_t& depth,
 	{
 		size_t brdepth = depth + 1;
 		size_t brwid = SIZE_MAX;
-		Handle sbr(h);
+
+		// The start-term is a term that contains the starting atom...
+		// but it cannot be a ChoiceLink; it must be above or below
+		// any choice link.
+		Handle sbr(startrm);
+		if (CHOICE_LINK != t) sbr = h;
 
 		// Blow past the QuoteLinks, since they just screw up the search start.
 		if (Quotation::is_quotation_type(hunt->get_type()))
@@ -902,7 +906,7 @@ void InitiateSearchCB::jit_analyze(PatternMatchEngine* pme)
 			// Extract the variables in the definition.
 			// Either they are given in a LambdaLink, or, if absent,
 			// we just hunt down and bind all of them.
-			if (_classserver.isA(LAMBDA_LINK, defn->get_type()))
+			if (_nameserver.isA(LAMBDA_LINK, defn->get_type()))
 			{
 				LambdaLinkPtr lam = LambdaLinkCast(defn);
 				vset.extend(lam->get_variables());

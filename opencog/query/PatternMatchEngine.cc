@@ -1077,6 +1077,15 @@ bool PatternMatchEngine::tree_compare(const PatternTermPtr& ptm,
 	if (hp->is_node() and hg->is_node())
 		return node_compare(hp, hg);
 
+	// CHOICE_LINK's are multiple-choice links. As long as we can
+	// can match one of the sub-expressions of the ChoiceLink, then
+	// the ChoiceLink as a whole can be considered to be grounded.
+	// Note, we must do this before the fuzzy_match below, because
+	// hg might be a node (i.e. we compare a choice of nodes to one
+	// node).
+	if (CHOICE_LINK == tp)
+		return choice_compare(ptm, hg);
+
 	// If they're not both links, then it is clearly a mismatch.
 	if (not (hp->is_link() and hg->is_link())) return _pmc.fuzzy_match(hp, hg);
 
@@ -1088,16 +1097,9 @@ bool PatternMatchEngine::tree_compare(const PatternTermPtr& ptm,
 	logmsg("tree_compare:", hp);
 	logmsg("to:", hg);
 
-	// CHOICE_LINK's are multiple-choice links. As long as we can
-	// can match one of the sub-expressions of the ChoiceLink, then
-	// the ChoiceLink as a whole can be considered to be grounded.
-	//
-	if (CHOICE_LINK == tp)
-		return choice_compare(ptm, hg);
-
 	// If the two links are both ordered, its enough to compare
 	// them "side-by-side".
-	if (2 > hp->get_arity() or _classserver.isA(tp, ORDERED_LINK))
+	if (2 > hp->get_arity() or _nameserver.isA(tp, ORDERED_LINK))
 		return ordered_compare(ptm, hg);
 
 	// If we are here, we are dealing with an unordered link.
@@ -1280,7 +1282,7 @@ bool PatternMatchEngine::explore_link_branches(const PatternTermPtr& ptm,
 	// If its not an unordered link, then don't try to iterate over
 	// all permutations.
 	Type tp = hp->get_type();
-	if (not _classserver.isA(tp, UNORDERED_LINK))
+	if (not _nameserver.isA(tp, UNORDERED_LINK))
 		return explore_choice_branches(ptm, hg, clause_root);
 
 	do {
@@ -2001,12 +2003,12 @@ void PatternMatchEngine::solution_drop(void)
  * Inputs:
  * do_clause: must be one of the clauses previously specified in the
  *            clause list of the match() method.
- * starter:   must be a sub-clause of do_clause; that is, must be a link
- *            that appears in do_clause.
- * ah:        must be a (non-variable) node in the "starter" clause.
+ * term:      must be a sub-clause of do_clause; that is, must be a link
+ *            that appears in do_clause. Must contain `grnd` below.
+ * grnd:      must be a (non-variable) node in the `term` term.
  *            That is, this must be one of the outgoing atoms of the
- *            "starter" link, it must be a node, and it must not be
- *            a variable node.
+ *            `term` link; it must be a node, and it must not be
+ *            a variable node or glob node.
  *
  * Returns true if one (or more) matches are found
  *
@@ -2139,7 +2141,7 @@ bool PatternMatchEngine::explore_constant_evaluatables(const HandleSeq& clauses)
 
 PatternMatchEngine::PatternMatchEngine(PatternMatchCallback& pmcb)
 	: _pmc(pmcb),
-	_classserver(classserver()),
+	_nameserver(nameserver()),
 	_varlist(NULL),
 	_pat(NULL)
 {

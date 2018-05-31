@@ -21,7 +21,7 @@ IF(HAVE_GUILE)
 ENDIF(HAVE_GUILE)
 
 ADD_CXXTEST(AlphaConvertUTest)
-TARGET_LINK_LIBRARIES(AlphaConvertUTest lambda atomspace)
+TARGET_LINK_LIBRARIES(AlphaConvertUTest query execution lambda atomspace)
 
 ADD_CXXTEST(BetaReduceUTest)
 TARGET_LINK_LIBRARIES(BetaReduceUTest atomspace)
@@ -40,3 +40,6 @@ TARGET_LINK_LIBRARIES(StateLinkUTest execution atomspace)
 
 ADD_CXXTEST(VariablesUTest)
 TARGET_LINK_LIBRARIES(VariablesUTest atomspace)
+
+ADD_CXXTEST(ExistsLinkUTest)
+TARGET_LINK_LIBRARIES(ExistsLinkUTest execution atomspace)

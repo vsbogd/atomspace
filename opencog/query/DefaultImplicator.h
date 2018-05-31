@@ -24,7 +24,6 @@
 #ifndef _OPENCOG_DEFAULT_IMPLICATOR_H
 #define _OPENCOG_DEFAULT_IMPLICATOR_H
 
-#include "AttentionalFocusCB.h"
 #include "DefaultPatternMatchCB.h"
 #include "Implicator.h"
 #include "InitiateSearchCB.h"
@@ -68,31 +67,6 @@ class DefaultImplicator:
 	}
 };
 
-
-/**
- * Attentional Focus specific PatternMatchCallback implementation
- */
-class AFImplicator:
-	public virtual Implicator,
-	public virtual InitiateSearchCB,
-	public virtual AttentionalFocusCB
-{
-	public:
-		AFImplicator(AtomSpace* asp) :
-			Implicator(asp),
-			InitiateSearchCB(asp),
-			DefaultPatternMatchCB(asp),
-			AttentionalFocusCB(asp)
-		{}
-
-	virtual void set_pattern(const Variables& vars,
-	                         const Pattern& pat)
-	{
-		InitiateSearchCB::set_pattern(vars, pat);
-		DefaultPatternMatchCB::set_pattern(vars, pat);
-	}
-};
-
 #ifdef CACHED_IMPLICATOR
 class CachedDefaultImplicator {
 	static DefaultImplicator* _cached_implicator;
@@ -102,6 +76,8 @@ class CachedDefaultImplicator {
 		operator Implicator&() { return *_cached_implicator; }
 };
 #endif
+
+Handle do_imply(AtomSpace*, const Handle&, Implicator&, bool);
 
 }; // namespace opencog
 

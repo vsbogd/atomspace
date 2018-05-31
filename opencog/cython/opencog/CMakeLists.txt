@@ -7,6 +7,10 @@
 #
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
 
+MESSAGE(STATUS "Setting python RPATH to ${CMAKE_INSTALL_PREFIX}/${PYTHON_DEST}")
+SET(CMAKE_SHARED_LINKER_FLAGS
+	"${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath -Wl,${CMAKE_INSTALL_PREFIX}/${PYTHON_DEST}")
+
 INCLUDE_DIRECTORIES(
 	${PYTHON_INCLUDE_DIRS}
 	${CMAKE_CURRENT_SOURCE_DIR}
@@ -57,10 +61,10 @@ SET_TARGET_PROPERTIES(logger_cython PROPERTIES
 
 ###################### atomspace ####################################
 CYTHON_ADD_MODULE_PYX(atomspace
-	"atom.pyx" "classserver.pyx" "truth_value.pyx"
+	"atom.pyx" "nameserver.pyx" "truth_value.pyx"
 	"atomspace_details.pyx" opencog_atom_types
 	"../../truthvalue/TruthValue.h" "../../truthvalue/SimpleTruthValue.h"
-	"../../atoms/base/ClassServer.h" "../../atoms/base/Handle.h"
+	"../../atoms/proto/NameServer.h" "../../atoms/base/Handle.h"
 	"../../atomspace/AtomSpace.h"
 )
 
@@ -73,6 +77,12 @@ ADD_LIBRARY(atomspace_cython
 	atomspace.cpp
 )
 
+# The atomspace_api.h must be generated before PythonEval is compiled, thus
+# this phony-target is created. Why not add_dependencies between PythonEval
+# and atomspace_cython? -> Because that results in a cyclic dependency.
+ADD_CUSTOM_TARGET(py_atomspace_header
+	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/atomspace.cpp)
+
 # XXX FIXME Cython should not static link the atom-types, but
 # but should instead dynamic-load them, as needed.
 ADD_DEPENDENCIES(atomspace_cython opencog_atom_types)
@@ -80,6 +90,7 @@ ADD_DEPENDENCIES(atomspace_cython opencog_atom_types)
 TARGET_LINK_LIBRARIES(atomspace_cython
 	${NO_AS_NEEDED}
 	attentionbank
+	execution
 	atomspace
 	atomutils
 	clearbox
@@ -205,7 +216,7 @@ IF (HAVE_GUILE)
 		smob
 		${PYTHON_LIBRARIES}
 	)
-	
+
 	SET_TARGET_PROPERTIES(scheme_wrapper PROPERTIES
 		PREFIX ""
 		OUTPUT_NAME scheme_wrapper)

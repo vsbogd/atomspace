@@ -86,7 +86,7 @@ static TruthValuePtr do_satlink(AtomSpace* as, const Handle& hlink)
 {
 	Handle plp(hlink);
 	// If not already a PatternLink, then WRAP it in a PattrnLink.
-	if (not classserver().isA(hlink->get_type(), PATTERN_LINK))
+	if (not nameserver().isA(hlink->get_type(), PATTERN_LINK))
 		plp = createPatternLink(hlink);
 	return satisfaction_link(as, plp);
 }
@@ -100,10 +100,6 @@ void PatternSCM::init(void)
 	// Returns the first N matches, assuming that N is the second argument.
 	_binders.push_back(new FunctionWrap(bindlink,
 	                   "cog-bind-first-n", "query"));
-
-	// Attentional Focus function
-	_binders.push_back(new FunctionWrap(af_bindlink,
-	                   "cog-bind-af", "query"));
 
 	// A bindlink that returns a TV
 	_binders.push_back(new FunctionWrap(do_satlink,

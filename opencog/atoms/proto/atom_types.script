@@ -335,9 +335,10 @@ DUAL_LINK <- SATISFYING_LINK
 // Assorted PLN link types.
 
 // Logical quantifiers
-// Should these inherit from EvaluatableLink ??
-FORALL_LINK <- SCOPE_LINK "ForAllLink"
-EXISTS_LINK <- SCOPE_LINK
+// Actually, these probably should inherit from PrenexLink, because
+// we typically want to maintain these in prenex normal form.
+FORALL_LINK <- SCOPE_LINK,EVALUATABLE_LINK "ForAllLink"
+EXISTS_LINK <- SCOPE_LINK,EVALUATABLE_LINK
 
 // Average links are not really useful since they are equivalent to a
 // predicate (which could be a PredicateNode or derived, or built with
@@ -486,8 +487,8 @@ ANCHOR_NODE <- NODE
 // as time intervals, or the lower and upper bounds of some range.
 INTERVAL_LINK <- ORDERED_LINK
 
-// Link for mathematics. (???) Huh? What is this? What does it do?
-// Is this actually used anywhere? Is this documented anywhere?
+// Link to represent the magnitude or the multitude of something, such
+// as 10kg, 10s, $10, etc.
 QUANTITY_LINK <- ORDERED_LINK
 
 // ====================================================================

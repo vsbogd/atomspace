@@ -1,7 +1,6 @@
 
 # Build the query shlib
 ADD_LIBRARY(query
-	AttentionalFocusCB.cc
 	DefaultPatternMatchCB.cc
 	Implicator.cc
 	DefaultImplicator.cc
@@ -21,7 +20,7 @@ TARGET_LINK_LIBRARIES(query
 	atomutils
 	lambda
 	atomspace
-#	execution
+#	execution # disabled to avoid cyclic dependency
 )
 
 IF (HAVE_GUILE)
@@ -31,7 +30,6 @@ ENDIF (HAVE_GUILE)
 INSTALL (TARGETS query DESTINATION "lib${LIB_DIR_SUFFIX}/opencog")
 
 INSTALL (FILES
-	AttentionalFocusCB.h
 	BindLinkAPI.h
 	DefaultImplicator.h
 	DefaultPatternMatchCB.h

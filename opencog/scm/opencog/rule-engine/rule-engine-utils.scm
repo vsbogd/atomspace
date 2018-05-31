@@ -11,9 +11,33 @@
 ;; -- ure-add-rules -- Associate  a list of rule-alias and TV pairs to a rbs
 ;; -- ure-set-num-parameter -- Set a numeric parameter of an rbs
 ;; -- ure-set-fuzzy-bool-parameter -- Set a fuzzy boolean parameter of an rbs
+;; -- ure-set-attention-allocation -- Set the URE:attention-allocation parameter
+;; -- ure-set-maximum-iterations -- Set the URE:maximum-iterations parameter
+;; -- ure-set-fc-retry-sources -- Set the URE:FC:retry-sources parameter
+;; -- ure-set-bc-complexity-penalty -- Set the URE:BC:complexity-penalty parameter
+;; -- ure-set-bc-maximum-bit-size -- Set the URE:BC:maximum-bit-size
+;; -- ure-set-bc-mm-complexity-penalty -- Set the URE:BC:MM:complexity-penalty
+;; -- ure-set-bc-mm-compressiveness -- Set the URE:BC:MM:compressiveness
 ;; -- ure-define-rbs -- Create a rbs that runs for a particular number of
 ;;                      iterations.
 ;; -- ure-get-forward-rule -- Return the forward form of a rule
+;; -- ure-logger-set-level! -- Set level of the URE logger
+;; -- ure-logger-get-level -- get level of the URE logger
+;; -- ure-logger-set-filename! -- set filename of the URE logger
+;; -- ure-logger-get-filename -- get filename of the URE logger
+;; -- ure-logger-set-stdout! -- set stdout flag of the URE logger
+;; -- ure-logger-set-sync! -- set sync flag of the URE logger
+;; -- ure-logger-set-timestamp! -- set timestamp falg of the URE logger
+;; -- ure-logger-error-enabled? -- check that the log level of the URE logger is error enabled
+;; -- ure-logger-warn-enabled? -- check that the log level of the URE logger is warn enabled
+;; -- ure-logger-info-enabled? -- check that the log level of the URE logger is info enabled
+;; -- ure-logger-debug-enabled? -- check that the log level of the URE logger is debug enabled
+;; -- ure-logger-fine-enabled? -- check that the log level of the URE logger is fine enabled
+;; -- ure-logger-error -- logger at error level of the URE logger
+;; -- ure-logger-warn -- logger at warn level of the URE logger
+;; -- ure-logger-info -- logger at info level of the URE logger
+;; -- ure-logger-debug -- logger at debug level of the URE logger
+;; -- ure-logger-fine -- logger at fine level of the URE logger
 ;; -- bool->tv -- Convert #t to TRUE_TV and #f to FALSE_TV
 ;; -- tv->bool -- Convert TRUE_TV to #t, anything else to #f
 ;; -- atom->number -- Convert NumberNode into its corresponding number
@@ -34,6 +58,7 @@
 
 (use-modules (opencog))
 (use-modules (opencog exec))
+(use-modules (opencog logger))
 (use-modules (srfi srfi-1))
 
 (define* (cog-fc rbs source #:key (vardecl (List)) (focus-set (Set)))
@@ -47,11 +72,11 @@
   source: Source from where to start forward chaining. If a SetLink
           then multiple sources are considered.
 
-  vardecl: optional variable declaration of the source (in case it has
-           variables)
+  vd: optional variable declaration of the source (in case it has
+      variables)
 
-  focus-set: optional focus-set, a SetLink with all atoms to consider
-             for forward chaining
+  fs: optional focus-set, a SetLink with all atoms to consider for
+      forward chaining
 "
   (cog-mandatory-args-fc rbs source vardecl focus-set))
 
@@ -67,15 +92,15 @@
 
   target: Target to proof.
 
-  vardecl: optional variable declaration of the target (in case it has
-           variables)
+  vardecl: [optional] Variable declaration of the target (in case it
+           has variables)
 
-  trace-as: optional AtomSpace to record the back-inference traces.
+  trace-as: [optional] AtomSpace to record the back-inference traces.
 
-  control-as: optional AtomSpace storing inference control rules.
+  control-as: [optional] AtomSpace storing inference control rules.
 
-  focus-set: optional focus-set, a SetLink with all atoms to consider
-             for forward chaining (NOT IMPLEMENTED).
+  focus-set: [optional] focus-set, a SetLink with all atoms to
+             consider for forward chaining (NOT IMPLEMENTED).
 "
   (let* ((trace-enabled (cog-atomspace? trace-as))
          (control-enabled (cog-atomspace? control-as))
@@ -83,6 +108,10 @@
          (cas (if control-enabled control-as (cog-atomspace))))
   (cog-mandatory-args-bc rbs target vardecl
                          trace-enabled tas control-enabled cas focus-set)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; URE Configuration Helpers ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-public (ure-define-add-rule rbs rule-name rule . tv)
 "
@@ -158,29 +187,31 @@
   (for-each add-rule rules)
 )
 
-; Set numerical parameters. Given an rbs, a parameter name and its
-; value, create
-;
-; ExecutionLink
-;    SchemaNode name
-;    rbs
-;    (NumberNode "value")
-;
-; It will also delete the any
-;
-; ExecutionLink
-;    SchemaNode name
-;    rbs
-;    *
-;
-; to be sure there is ever only one value associated to that
-; parameter. The value is automatically converted into string.
 (define (ure-set-num-parameter rbs name value)
-  (define (param-hypergraph value)
+"
+  Set numerical parameters. Given an rbs, a parameter name and its
+  value, create
+
+  ExecutionLink
+     SchemaNode name
+     rbs
+     NumberNode value
+
+  It will also delete the any
+
+  ExecutionLink
+     SchemaNode name
+     rbs
+     *
+
+  to be sure there is ever only one value associated to that
+  parameter. The value is automatically converted into string.
+"
+  (define (param-hypergraph atom)
     (ExecutionLink
        (SchemaNode name)
        rbs
-       value)
+       atom)
   )
   (let ((del-prev-val (BindLink
                           (param-hypergraph (VariableNode "__VALUE__"))
@@ -193,20 +224,118 @@
   )
 
   ; Set new value for that parameter
-  (param-hypergraph (NumberNode (number->string value)))
+  (param-hypergraph (NumberNode value))
 )
 
-; Set (fuzzy) bool parameters. Given an RBS, a parameter name and its
-; value, create (or overwrite)
-;
-; EvaluationLink (stv value 1)
-;    PredicateNode name
-;    rbs
 (define (ure-set-fuzzy-bool-parameter rbs name value)
-  (EvaluationLink (stv value 1)
-     (PredicateNode name)
-     rbs)
-)
+"
+  Set (fuzzy) bool parameters. Given an RBS, a parameter name and its
+  value, create (or overwrite)
+
+  EvaluationLink (stv value 1)
+     PredicateNode name
+     rbs
+
+  If the provided value is a boolean, then it is automatically
+  converted into tv.
+"
+  (let* ((tv (if (number? value) (stv value 1) (bool->tv value))))
+    (EvaluationLink tv
+      (PredicateNode name)
+      rbs)))
+
+(define (ure-set-attention-allocation rbs value)
+"
+  Set the URE:attention-allocation parameter of a given RBS
+
+  EvaluationLink (stv (if value 1 0) 1)
+    SchemaNode \"URE:attention-allocation\"
+    rbs
+    NumberNode value
+
+  where value is either #t or #f.
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:attention-allocation" value))
+
+(define (ure-set-maximum-iterations rbs value)
+"
+  Set the URE:maximum-iterations parameter of a given RBS
+
+  ExecutionLink
+    SchemaNode \"URE:maximum-iterations\"
+    rbs
+    NumberNode value
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:maximum-iterations" value))
+
+(define (ure-set-fc-retry-sources rbs value)
+"
+  Set the URE:FC:retry-sources parameter of a given RBS
+
+  EvaluationLink (stv value 1)
+    PredicateNode \"URE:FC:retry-sources\"
+    rbs
+
+  If the provided value is a boolean, then it is automatically
+  converted into tv.
+"
+  (ure-set-fuzzy-bool-parameter rbs "URE:FC:retry-sources" value))
+
+(define (ure-set-bc-complexity-penalty rbs value)
+"
+  Set the URE:BC:complexity-penalty parameter of a given RBS
+
+  ExecutionLink
+    SchemaNode \"URE:BC:complexity-penalty\"
+    rbs
+    NumberNode value
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:BC:complexity-penalty" value))
+
+(define (ure-set-bc-maximum-bit-size rbs value)
+"
+  Set the URE:BC:maximum-bit-size parameter of a given RBS
+
+  ExecutionLink
+    SchemaNode \"URE:BC:maximum-bit-size\"
+    rbs
+    NumberNode value
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:BC:maximum-bit-size" value))
+
+(define (ure-set-bc-mm-complexity-penalty rbs value)
+"
+  Set the URE:BC:MM:complexity-penalty parameter of a given RBS
+
+  ExecutionLink
+    SchemaNode \"URE:BC:MM:complexity-penalty\"
+    rbs
+    NumberNode value
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:BC:MM:complexity-penalty" value))
+
+(define (ure-set-bc-mm-compressiveness rbs value)
+"
+  Set the URE:BC:MM:compressiveness parameter of a given RBS
+
+  ExecutionLink
+    SchemaNode \"URE:BC:MM:compressiveness\"
+    rbs
+    NumberNode value
+
+  Delete any previous one if exists.
+"
+  (ure-set-num-parameter rbs "URE:BC:MM:compressiveness" value))
 
 (define-public (ure-define-rbs rbs iteration)
 "
@@ -233,6 +362,32 @@
     (if (eq? rule-type 'ListLink) (gar rule) rule))
 )
 
+;;;;;;;;;;;;;;;;
+;; URE Logger ;;
+;;;;;;;;;;;;;;;;
+
+(define (ure-logger-set-level! l) (cog-logger-set-level! (cog-ure-logger) l))
+(define (ure-logger-get-level) (cog-logger-get-level (cog-ure-logger)))
+(define (ure-logger-set-filename! filename) (cog-logger-set-filename! (cog-ure-logger) filename))
+(define (ure-logger-get-filename) (cog-logger-get-filename (cog-ure-logger)))
+(define (ure-logger-set-stdout! enable) (cog-logger-set-stdout! (cog-ure-logger) enable))
+(define (ure-logger-set-sync! enable) (cog-logger-set-sync! (cog-ure-logger) enable))
+(define (ure-logger-set-timestamp! enable) (cog-logger-set-timestamp! (cog-ure-logger) enable))
+(define (ure-logger-error-enabled?) (cog-logger-error-enabled? (cog-ure-logger)))
+(define (ure-logger-warn-enabled?) (cog-logger-warn-enabled? (cog-ure-logger)))
+(define (ure-logger-info-enabled?) (cog-logger-info-enabled? (cog-ure-logger)))
+(define (ure-logger-debug-enabled?) (cog-logger-debug-enabled? (cog-ure-logger)))
+(define (ure-logger-fine-enabled?) (cog-logger-fine-enabled? (cog-ure-logger)))
+(define (ure-logger-error . args) (apply cog-logger-error (cons (cog-ure-logger) args)))
+(define (ure-logger-warn . args) (apply cog-logger-warn (cons (cog-ure-logger) args)))
+(define (ure-logger-info . args) (apply cog-logger-info (cons (cog-ure-logger) args)))
+(define (ure-logger-debug . args) (apply cog-logger-debug (cons (cog-ure-logger) args)))
+(define (ure-logger-fine . args) (apply cog-logger-fine (cons (cog-ure-logger) args)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Helpers for Implementing URE Rules ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (define-public (bool->tv b)
 "
   Convert #t to TRUE_TV and #f to FALSE_TV
@@ -258,11 +413,35 @@
 "
   (bool->tv (> (cog-stv-confidence A) 0)))
 
+(define-public (gt-zero-confidence-eval A)
+"
+  Add the following evaluation in the current atomspace
+
+  Evaluation
+    GroundedPredicate \"scm: gt-zero-confidence-eval\"
+    A
+"
+  (Evaluation
+    (GroundedPredicate "scm: gt-zero-confidence-eval")
+    A))
+
 (define-public (absolutely-true A)
 "
   Return TrueTV iff A's TV is TrueTV
 "
   (bool->tv (tv->bool (cog-tv A))))
+
+(define-public (absolutely-true-eval A)
+"
+  Add the following evaluation in the current atomspace
+
+  Evaluation
+    GroundedPredicate \"scm: absolutely-true\"
+    A
+"
+  (Evaluation
+    (GroundedPredicate "scm: absolutely-true")
+    A))
 
 (define (meta-bind bl)
 "
@@ -294,6 +473,7 @@
       (append (gen-variables prefix (- n 1))
               (list (gen-variable prefix (- n 1))))))
 
+;; TODO: use random-variable instead
 (define (gen-rand-variable prefix base length)
 "
   gen-rand-variable prefix base length
@@ -322,13 +502,38 @@
           ure-add-rules
           ure-set-num-parameter
           ure-set-fuzzy-bool-parameter
+          ure-set-attention-allocation
+          ure-set-maximum-iterations
+          ure-set-fc-retry-sources
+          ure-set-bc-maximum-bit-size
+          ure-set-bc-mm-complexity-penalty
+          ure-set-bc-mm-compressiveness
           ure-define-rbs
           ure-get-forward-rule
+          ure-logger-set-level!
+          ure-logger-get-level
+          ure-logger-set-filename!
+          ure-logger-get-filename
+          ure-logger-set-stdout!
+          ure-logger-set-sync!
+          ure-logger-set-timestamp!
+          ure-logger-error-enabled?
+          ure-logger-warn-enabled?
+          ure-logger-info-enabled?
+          ure-logger-debug-enabled?
+          ure-logger-fine-enabled?
+          ure-logger-error
+          ure-logger-warn
+          ure-logger-info
+          ure-logger-debug
+          ure-logger-fine
           bool->tv
           tv->bool
           atom->number
           gt-zero-confidence
+          gt-zero-confidence-eval
           absolutely-true
+          absolutely-true-eval
           meta-bind
           gen-variable
           gen-variables

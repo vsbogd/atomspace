@@ -12,6 +12,7 @@ LINK_DIRECTORIES (
 
 LINK_LIBRARIES (
 	query
+	lambda
 	clearbox
 	execution
 	atomspace
@@ -77,7 +78,6 @@ IF (HAVE_GUILE)
 	ADD_CXXTEST(NestedPutUTest)
 
 	ADD_CXXTEST(FirstNUTest)
-	ADD_CXXTEST(AttentionalFocusCBUTest)
 	ADD_CXXTEST(SudokuUTest)
 	ADD_CXXTEST(EinsteinUTest)
 	ADD_CXXTEST(TypeChoiceUTest)

@@ -68,7 +68,7 @@ class AttentionBank
 
     void updateAttentionalFocus(const Handle&, const AttentionValuePtr&,
                                 const AttentionValuePtr&);
-    
+
     /** AV changes */
     void AVChanged(const Handle&, const AttentionValuePtr&, const AttentionValuePtr&);
 
@@ -128,6 +128,14 @@ public:
     {
         if (attentionalFocus.rbegin() != attentionalFocus.rend())
             return (attentionalFocus.rbegin()->second)->getSTI();
+        else
+            return 0;
+    }
+
+    AttentionValue::sti_t get_af_min_sti(void) const
+    {
+        if (attentionalFocus.rbegin() != attentionalFocus.rend())
+            return (attentionalFocus.begin()->second)->getSTI();
         else
             return 0;
     }
@@ -248,7 +256,7 @@ public:
     get_handle_set_in_attentional_focus(OutputIterator result)
     {
          std::lock_guard<std::mutex> lock(AFMutex);
-         for (const auto p : attentionalFocus) {
+         for (const auto& p : attentionalFocus) {
              *result++ = p.first;
          }
          return result;

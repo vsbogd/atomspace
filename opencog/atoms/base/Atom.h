@@ -35,7 +35,7 @@
 
 #include <opencog/util/sigslot.h>
 #include <opencog/atoms/base/Handle.h>
-#include <opencog/atoms/base/ProtoAtom.h>
+#include <opencog/atoms/proto/ProtoAtom.h>
 #include <opencog/truthvalue/TruthValue.h>
 
 class AtomUTest;
@@ -176,7 +176,7 @@ protected:
         // incoming sets containing 10K atoms are not unusual, and can
         // be the source of bottlnecks.  Note that an atomspace can
         // contain a hundred-million atoms, so the solution has to be
-        // small. This rules out using using a vector to store the
+        // small. This rules out using a vector to store the
         // buckets (I tried).
         std::map<Type, WincomingSet> _iset;
 
@@ -307,7 +307,7 @@ public:
     {
         if (nullptr == _incoming_set) return result;
         std::lock_guard<std::mutex> lck(_mtx);
-        for (const auto bucket : _incoming_set->_iset)
+        for (const auto& bucket : _incoming_set->_iset)
         {
             for (const WinkPtr& w : bucket.second)
             {

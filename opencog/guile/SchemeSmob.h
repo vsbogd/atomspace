@@ -20,8 +20,8 @@
 #include <libguile.h>
 
 #include <opencog/atoms/base/Handle.h>
-#include <opencog/atoms/base/ProtoAtom.h>
-#include <opencog/atoms/base/types.h>
+#include <opencog/atoms/proto/ProtoAtom.h>
+#include <opencog/atoms/proto/types.h>
 
 #include <opencog/truthvalue/AttentionValue.h>
 #include <opencog/truthvalue/TruthValue.h>
@@ -111,20 +111,16 @@ private:
 	static SCM ss_value_to_list(SCM);
 	static SCM ss_value_ref(SCM, SCM);
 
-	// Set properties of atoms
-	static SCM ss_set_av(SCM, SCM);
+	// Property setters on atoms
 	static SCM ss_set_tv(SCM, SCM);
 	static SCM ss_set_value(SCM, SCM, SCM);
 	static SCM ss_inc_count(SCM, SCM);
-	static SCM ss_inc_vlti(SCM);
-	static SCM ss_dec_vlti(SCM);
 
 	// Atom properties
 	static SCM ss_name(SCM);
 	static SCM ss_type(SCM);
 	static SCM ss_arity(SCM);
 	static SCM ss_as(SCM);
-	static SCM ss_av(SCM);
 	static SCM ss_tv(SCM);
 	static SCM ss_keys(SCM);
 	static SCM ss_value(SCM, SCM);
@@ -186,14 +182,6 @@ private:
 	static SCM ss_new_av(SCM, SCM, SCM);
 	static SCM ss_av_p(SCM);
 	static SCM ss_av_get_value(SCM);
-
-	// AttentionalFocus and AttentionalFocus Boundary
-	// XXX FIXME these should move to the attention bank!
-	static SCM ss_af(void);
-	static SCM ss_af_topn(SCM);
-	static SCM ss_af_size(void);
-	static SCM ss_set_af_size(SCM);
-	static SCM ss_stimulate(SCM, SCM);
 
 	// Free variables
 	static SCM ss_get_free_variables(SCM);

@@ -94,7 +94,7 @@
 
 ; Load core atom types.
 ; The remaining atom types from the cogserver are in (opencog atom-types)
-(load-from-path "opencog/base/core_types.scm")
+(load-from-path "opencog/atoms/proto/core_types.scm")
 
 ; Load other grunge too.
 ; Some of these things could possibly be modules ...?
@@ -107,7 +107,7 @@
 
 (load-from-path "opencog/base/atom-cache.scm")
 (load-from-path "opencog/base/apply.scm")
-(load-from-path "opencog/base/av-tv.scm")
+(load-from-path "opencog/base/tv.scm")
 (load-from-path "opencog/base/file-utils.scm")
 (load-from-path "opencog/base/debug-trace.scm")
 

@@ -12,19 +12,18 @@
 #include <libguile.h>
 
 #include <opencog/atomspace/AtomSpace.h>
-#include <opencog/attentionbank/AttentionBank.h>
-#include <opencog/atoms/base/ClassServer.h>
+#include <opencog/atoms/proto/NameServer.h>
 #include <opencog/guile/SchemeSmob.h>
 
 using namespace opencog;
 
 /* ============================================================== */
 /**
- * Return a string holding the scheme representation of an atom/truthvalue.
+ * Return a string holding the scheme representation of an opencog object.
+ * This could be a ProtoAtom (an atom or a value), or an AtomSpace, or a
+ * guile module created with the PrimitiveEnviron C++ module wrapper.
  *
- * The input is assumed to be pointing at a Handle, a TruthValue,
- * an AttentionValue or a UUID. Returned is a valid scheme
- * expression that represents that Handle, etc.
+ * Returned is a valid scheme expression that represents that object.
  */
 std::string SchemeSmob::to_string(SCM node)
 {
@@ -63,7 +62,7 @@ std::string SchemeSmob::handle_to_string(const Handle& h, int indent)
 	if (h->is_node())
 	{
 		ret += "(";
-		ret += classserver().getTypeName(h->get_type());
+		ret += nameserver().getTypeName(h->get_type());
 		ret += " \"";
 		ret += h->get_name();
 		ret += "\"";
@@ -74,11 +73,6 @@ std::string SchemeSmob::handle_to_string(const Handle& h, int indent)
 			ret += " ";
 			ret += tv_to_string (tv);
 		}
-		AttentionValuePtr av(get_av(h));
-		if (not av->isDefaultAV()) {
-			ret += " ";
-			ret += av_to_string (av);
-		}
 		ret += ")";
 		return ret;
 	}
@@ -86,18 +80,13 @@ std::string SchemeSmob::handle_to_string(const Handle& h, int indent)
 	if (h->is_link())
 	{
 		ret += "(";
-		ret += classserver().getTypeName(h->get_type());
+		ret += nameserver().getTypeName(h->get_type());
 
 		// If there's a truth value, print it before the other atoms
 		TruthValuePtr tv(h->getTruthValue());
 		if (not tv->isDefaultTV()) {
 			ret += " ";
 			ret += tv_to_string(tv);
-		}
-		AttentionValuePtr av(get_av(h));
-		if (not av->isDefaultAV()) {
-			ret += " ";
-			ret += av_to_string (av);
 		}
 
 		// Print the outgoing link set.
@@ -296,7 +285,7 @@ Type SchemeSmob::verify_atom_type (SCM stype, const char *subrname, int pos)
 		scm_wrong_type_arg_msg(subrname, pos, stype, "name of opencog atom type");
 
 	const char * ct = scm_i_string_chars(stype);
-	Type t = classserver().getType(ct);
+	Type t = nameserver().getType(ct);
 
 	// Make sure that the type is good
 	if (NOTYPE == t)
@@ -370,7 +359,7 @@ SCM SchemeSmob::ss_new_node (SCM stype, SCM sname, SCM kv_pairs)
 	Type t = verify_atom_type(stype, "cog-new-node", 1);
 
 	// Special case handling for NumberNode (and TimeNode, etc.)
-	if (classserver().isA(t, NUMBER_NODE) and scm_is_number(sname)) {
+	if (nameserver().isA(t, NUMBER_NODE) and scm_is_number(sname)) {
 		sname = scm_number_to_string(sname, _radix_ten);
 	}
 	std::string name(verify_string (sname, "cog-new-node", 2,
@@ -387,10 +376,6 @@ SCM SchemeSmob::ss_new_node (SCM stype, SCM sname, SCM kv_pairs)
 		const TruthValuePtr tv(get_tv_from_list(kv_pairs));
 		if (tv) h->setTruthValue(tv);
 
-		// Was an attention value explicitly specified?
-		// If so, then we've got to set it.
-		const AttentionValuePtr av(get_av_from_list(kv_pairs));
-		if (av) attentionbank(atomspace).change_av(h, av);
 		return handle_to_scm(h);
 	}
 	catch (const std::exception& ex)
@@ -424,10 +409,6 @@ SCM SchemeSmob::ss_node (SCM stype, SCM sname, SCM kv_pairs)
 	// If there was a truth value, change it.
 	const TruthValuePtr tv(get_tv_from_list(kv_pairs));
 	if (tv) h->setTruthValue(tv);
-
-	// If there was an attention value, change it.
-	const AttentionValuePtr av(get_av_from_list(kv_pairs));
-	if (av) attentionbank(atomspace).change_av(h, av);
 
 	scm_remember_upto_here_1(kv_pairs);
 	return handle_to_scm (h);
@@ -511,10 +492,6 @@ SCM SchemeSmob::ss_new_link (SCM stype, SCM satom_list)
 		const TruthValuePtr tv(get_tv_from_list(satom_list));
 		if (tv) h->setTruthValue(tv);
 
-		// Was an attention value explicitly specified?
-		// If so, then we've got to set it.
-		const AttentionValuePtr av(get_av_from_list(satom_list));
-		if (av) attentionbank(atomspace).change_av(h, av);
 		return handle_to_scm (h);
 	}
 	catch (const std::exception& ex)
@@ -547,10 +524,6 @@ SCM SchemeSmob::ss_link (SCM stype, SCM satom_list)
 	// If there was a truth value, change it.
 	const TruthValuePtr tv(get_tv_from_list(satom_list));
 	if (tv) h->setTruthValue(tv);
-
-	// If there was an attention value, change it.
-	const AttentionValuePtr av(get_av_from_list(satom_list));
-	if (av) attentionbank(atomspace).change_av(h, av);
 
 	scm_remember_upto_here_1(satom_list);
 	return handle_to_scm (h);

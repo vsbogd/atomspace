@@ -22,7 +22,7 @@
 
 #include <thread>
 
-#include <opencog/atoms/base/atom_types.h>
+#include <opencog/atoms/proto/atom_types.h>
 #include <opencog/truthvalue/SimpleTruthValue.h>
 #include <opencog/atoms/core/DefineLink.h>
 #include <opencog/atoms/core/LambdaLink.h>
@@ -400,7 +400,7 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 	{
 		// Assume that the link is wrapping something executable (or
 		// evaluatable), which we execute (or evaluate), but then
-		// ignore the result.  The executale ones, we need to put the
+		// ignore the result.  The executable ones, we need to put the
 		// result in the (scratch) atomspace ... but in either case,
 		// we ignore the TV on it. We are doing this for the side-effects,
 		// of course -- the True/FalseLinks are pure side-effect atoms.
@@ -414,7 +414,7 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 		if (0 < evelnk->get_arity())
 		{
 			const Handle& term = evelnk->getOutgoingAtom(0);
-			if (classserver().isA(term->get_type(), EVALUATABLE_LINK))
+			if (nameserver().isA(term->get_type(), EVALUATABLE_LINK))
 			{
 				EvaluationLink::do_eval_scratch(as, term, scratch, silent);
 			}

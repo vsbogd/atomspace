@@ -29,7 +29,8 @@ ADD_LIBRARY(PythonEval
 	PythonEval.cc
 	load-file.cc
 )
-ADD_DEPENDENCIES(PythonEval atomspace_cython)
+
+ADD_DEPENDENCIES(PythonEval py_atomspace_header)
 
 TARGET_LINK_LIBRARIES(PythonEval
 	atombase

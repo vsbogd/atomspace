@@ -5,6 +5,7 @@
  *
  * Authors: Misgana Bayetta <misgana.bayetta@gmail.com> 2015
  *          Nil Geisweiller 2015-2016
+ *          Shujing Ke 2018
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License v3 as
@@ -86,7 +87,7 @@ Rule::Rule(const Handle& rule_alias, const Handle& rule, const Handle& rbs)
 void Rule::init(const Handle& rule_member)
 {
 	OC_ASSERT(rule_member != Handle::UNDEFINED);
-	if (not classserver().isA(rule_member->get_type(), MEMBER_LINK))
+	if (not nameserver().isA(rule_member->get_type(), MEMBER_LINK))
 		throw InvalidParamException(TRACE_INFO,
 		                            "Rule '%s' is expected to be a MemberLink",
 		                            rule_member->to_string().c_str());
@@ -113,6 +114,32 @@ void Rule::init(const Handle& rule_alias, const Handle& rule, const Handle& rbs)
 	AtomSpace& as = *rule_alias->getAtomSpace();
 	Handle ml = as.get_link(MEMBER_LINK, rule_alias, rbs);
 	_tv = ml->getTruthValue();
+
+    verify_rule();
+}
+
+bool Rule::verify_rule()
+{
+    // currently do not verify meta rules
+    if (is_meta())
+        return true;
+
+    Handle rewrite = _rule->get_implicand();
+    Type rewrite_type = rewrite->get_type();
+
+    // check 1: If there are multiple conclusions
+    if ((rewrite_type == AND_LINK) || (rewrite_type == LIST_LINK))
+    {
+        logger().warn() << "\nRule::verify_rule: " << _rule_alias->get_name()
+                        << " contains multiple conclusions.\n"
+                        << "This rule will not work in backwardchainer.\n"
+                        << "All the conclusions should be wrapped with an ExecutionOutPutLink.\n"
+                        << "Please check /atomspace/examples/rule-engine/DummyExecutionOutput.scm for example."
+                        << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 bool Rule::operator==(const Rule& r) const
@@ -408,7 +435,7 @@ RuleTypedSubstitutionMap Rule::unify_target(const Handle& target,
 		return {};
 
 	// To guarantee that the rule variable does not have the same name
-	// as any variable in the source. XXX This is only a stochastic
+	// as any variable in the target. XXX This is only a stochastic
 	// guarantee, there is a small chance that the new random name
 	// will still collide.
 	Rule alpha_rule = rand_alpha_converted();
