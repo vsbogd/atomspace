@@ -15,6 +15,7 @@ cdef extern from "opencog/atoms/execution/GroundedObjectNode.h" namespace "openc
     cdef cppclass cGroundedObjectNode "opencog::GroundedObjectNode":
         cGroundedObjectNode(const string&)
         cGroundedObjectNode(const string&, const shared_ptr[cGroundedObject]&)
+        cGroundedObjectNode(const shared_ptr[cGroundedObject]&)
         bool has_object() const
         void set_object(const shared_ptr[cGroundedObject]& object)
         cGroundedObject* get_object() except +

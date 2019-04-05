@@ -1,0 +1,61 @@
+/*
+ * tests/atoms/execution/GroundedObjectNodeUTest.cxxtest
+ *
+ * Copyright (C) 2019 OpenCog Foundation
+ * All Rights Reserved
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License v3 as
+ * published by the Free Software Foundation and including the exceptions
+ * at http://opencog.org/wiki/Licenses
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program; if not, write to:
+ * Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <functional>
+
+#include <opencog/atoms/execution/GroundedObject.h>
+#include <opencog/atoms/execution/GroundedObjectNode.h>
+
+using namespace opencog;
+
+class GroundedObjectNodeUTest : public CxxTest::TestSuite
+{
+public:
+
+	void setUp()
+	{
+	}
+
+	void tearDown()
+	{
+	}
+
+	void test_grounded_object_node_generated_name()
+	{
+		std::shared_ptr<GroundedObject> foo((GroundedObject*)0x123ABC,
+											[](GroundedObject*){});
+
+		GroundedObjectNode* node = new GroundedObjectNode(foo);
+
+		TS_ASSERT_EQUALS(node->get_name(), "grounded-object-node-0x123abc")
+	}
+
+	void test_grounded_object_node_generated_name_max_length()
+	{
+		std::shared_ptr<GroundedObject> foo((GroundedObject*)0x1122334455667788,
+											[](GroundedObject*){});
+
+		GroundedObjectNode* node = new GroundedObjectNode(foo);
+
+		TS_ASSERT_EQUALS(node->get_name(), "grounded-object-node-0x1122334455667788")
+	}
+};

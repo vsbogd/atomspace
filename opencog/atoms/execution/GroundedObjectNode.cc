@@ -35,6 +35,21 @@ GroundedObjectNode::GroundedObjectNode(const std::string& name,
 	set_object(object);
 }
 
+#define NAME_PREFIX "grounded-object-node-"
+
+static std::string generate_name(const std::shared_ptr<GroundedObject>& object)
+{
+	char buffer[sizeof(NAME_PREFIX) + 2 + sizeof(object.get()) * 2 + 1];
+	snprintf(buffer, sizeof(buffer), NAME_PREFIX "%p", object.get());
+	return std::string(buffer);
+}
+
+GroundedObjectNode::GroundedObjectNode(const std::shared_ptr<GroundedObject>& object)
+	: Node(GROUNDED_OBJECT_NODE, generate_name(object))
+{
+	set_object(object);
+}
+
 bool GroundedObjectNode::has_object() const
 {
 	ValuePtr ptr_value = getValue(GroundedObjectNode::ptrKey);
