@@ -342,13 +342,21 @@ RuleProbabilityPair ForwardChainer::select_rule(Source& source)
 
 RuleProbabilityPair ForwardChainer::select_rule(const RuleSet& valid_rules)
 {
+	static std::map<TruthValueSeq, std::vector<double>> cache;
 	// Build vector of all valid truth values
 	TruthValueSeq tvs;
 	for (const Rule& rule : valid_rules)
 		tvs.push_back(rule.get_tv());
 
 	// Build action selection distribution
-	std::vector<double> weights = ThompsonSampling(tvs).distribution();
+	std::vector<double> weights;
+	auto it = cache.find(tvs);
+	if (it == cache.end()) {
+		weights = ThompsonSampling(tvs).distribution();
+		cache[tvs] = weights;
+	} else {
+		weights = it->second;
+	}
 
 	// Log the distribution
 	if (ure_logger().is_debug_enabled()) {
