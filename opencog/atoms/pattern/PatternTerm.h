@@ -145,8 +145,6 @@ std::string oc_to_string(const PatternTermPtr& pt,
 
 } // namespace opencog
 
-using namespace opencog;
-
 namespace std {
 
 /**
@@ -157,12 +155,12 @@ namespace std {
  * handles on this path.
  */
 template<>
-struct less<PatternTermPtr>
+struct less<opencog::PatternTermPtr>
 {
-	bool operator()(const PatternTermPtr& lhs, const PatternTermPtr& rhs) const
+	bool operator()(const opencog::PatternTermPtr& lhs, const opencog::PatternTermPtr& rhs) const
 	{
-		const Handle& lHandle = lhs->getHandle();
-		const Handle& rHandle = rhs->getHandle();
+		const opencog::Handle& lHandle = lhs->getHandle();
+		const opencog::Handle& rHandle = rhs->getHandle();
 		if (lHandle == rHandle)
 		{
 			if (not lHandle) return false;
