@@ -10,3 +10,5 @@ ADD_CXXTEST(PtrValueUTest)
 
 ADD_CXXTEST(StreamUTest)
 TARGET_LINK_LIBRARIES(StreamUTest smob atomspace)
+
+ADD_CXXTEST(VoidValueUTest)

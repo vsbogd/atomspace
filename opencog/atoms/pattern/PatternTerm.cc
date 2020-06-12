@@ -15,17 +15,22 @@ namespace opencog {
 
 const PatternTermPtr PatternTerm::UNDEFINED(std::make_shared<PatternTerm>());
 
-PatternTerm::PatternTerm()
+PatternTerm::PatternTerm(void)
 	: _handle(Handle::UNDEFINED),
 	  _quote(Handle::UNDEFINED),
 	  _parent(PatternTerm::UNDEFINED),
 	  _has_any_bound_var(false),
 	  _has_bound_var(false),
+	  _is_bound_var(false),
 	  _has_any_globby_var(false),
 	  _has_globby_var(false),
+	  _is_globby_var(false),
 	  _has_any_evaluatable(false),
 	  _has_evaluatable(false),
-	  _has_any_unordered_link(false)
+	  _has_any_unordered_link(false),
+	  _is_literal(false),
+	  _is_present(false),
+	  _is_choice(false)
 {}
 
 PatternTerm::PatternTerm(const PatternTermPtr& parent, const Handle& h)
@@ -34,11 +39,16 @@ PatternTerm::PatternTerm(const PatternTermPtr& parent, const Handle& h)
 	             false /* necessarily false since it is local */),
 	  _has_any_bound_var(false),
 	  _has_bound_var(false),
+	  _is_bound_var(false),
 	  _has_any_globby_var(false),
 	  _has_globby_var(false),
+	  _is_globby_var(false),
 	  _has_any_evaluatable(false),
 	  _has_evaluatable(false),
-	  _has_any_unordered_link(false)
+	  _has_any_unordered_link(false),
+	  _is_literal(false),
+	  _is_present(false),
+	  _is_choice(false)
 {
 	Type t = h->get_type();
 
@@ -58,9 +68,11 @@ PatternTerm::PatternTerm(const PatternTermPtr& parent, const Handle& h)
 	_quotation.update(t);
 }
 
-void PatternTerm::addOutgoingTerm(const PatternTermPtr& ptm)
+PatternTermPtr PatternTerm::addOutgoingTerm(const Handle& h)
 {
+	PatternTermPtr ptm(createPatternTerm(shared_from_this(), h));
 	_outgoing.push_back(ptm);
+	return ptm;
 }
 
 PatternTermSeq PatternTerm::getOutgoingSet() const
@@ -137,9 +149,11 @@ void PatternTerm::addAnyBoundVar()
 /// variable).
 void PatternTerm::addBoundVariable()
 {
+	if (isQuoted()) return;
+
 	// Mark just this term (the variable itself)
 	// and mark the term that holds us.
-	_has_bound_var = true;
+	_is_bound_var = true;
 	if (_parent != PatternTerm::UNDEFINED)
 			_parent->_has_bound_var = true;
 
@@ -162,13 +176,16 @@ void PatternTerm::addAnyGlobbyVar()
 
 void PatternTerm::addGlobbyVar()
 {
-	_has_globby_var = true;
+	if (isQuoted()) return;
+
+	_is_globby_var = true;
 
 	if (_parent != PatternTerm::UNDEFINED)
 		_parent->_has_globby_var = true;
 
 	addAnyGlobbyVar();
 }
+
 
 // ==============================================================
 // Just like above, but for evaluatables.
@@ -197,23 +214,65 @@ void PatternTerm::addEvaluatable()
 
 void PatternTerm::addUnorderedLink()
 {
-	if (not _has_any_unordered_link)
+	if (_has_any_unordered_link) return;
+
+	_has_any_unordered_link = true;
+	if (_parent != PatternTerm::UNDEFINED)
+		_parent->addUnorderedLink();
+}
+
+// ==============================================================
+
+void PatternTerm::markLiteral()
+{
+	if (_is_literal) return;
+
+	_is_literal = true;
+	for (PatternTermPtr& ptm : getOutgoingSet())
+		ptm->markLiteral();
+}
+
+// ==============================================================
+
+void PatternTerm::markPresent()
+{
+	// If its literal, its effectively quoted, so cannot be present.
+	if (_is_literal or isQuoted()) return;
+
+	_is_present = true;
+
+	// By definition, everything underneath is literal
+	for (PatternTermPtr& ptm : getOutgoingSet())
+		ptm->markLiteral();
+}
+
+// ==============================================================
+
+void PatternTerm::markChoice()
+{
+	// If its literal, its effectively quoted, so cannot be a choice.
+	if (_is_literal or isQuoted()) return;
+
+	_is_choice = true;
+
+	// By definition, everything underneath is present, or literal
+	for (PatternTermPtr& ptm : getOutgoingSet())
 	{
-		_has_any_unordered_link = true;
-		if (_parent != PatternTerm::UNDEFINED)
-			_parent->addUnorderedLink();
+		if (not ptm->isPresent()) ptm->markLiteral();
 	}
 }
 
 // ==============================================================
 
-std::string PatternTerm::to_string() const { return to_string(":"); }
+std::string PatternTerm::to_string() const { return to_string(": "); }
 
 std::string PatternTerm::to_string(const std::string& indent) const
 {
+	// Term is null-terminated at thye top.
+	// Top term never has a handle in it.
 	if (not _handle) return "-";
 	std::string str = _parent->to_string();
-	str += indent + std::to_string(_handle.value());
+	str += indent + _handle->id_to_string();
 	return str;
 }
 

@@ -79,14 +79,27 @@ protected:
 	Pattern _pat;
 
 	/// The graph components. Set by validate_clauses().
+	/// "fixed" clauses are clauses that must be literally present
+	/// in order to be satisfied. Fixed clauses are never virtual
+	/// or evaluatable. They are a subset of the mandatory clauses.
+	/// They are a subset of the literal clauses (as some literal
+	/// clauses appear in ChoiceLinks/OrLinks.)
+	///
 	/// "virtual" clauses are those that contain virtual links.
-	/// "fixed" clauses are those that do not.
-	/// The list of component_vars are the variables that appear
-	/// in the corresponding component.
+	/// They are always evaluatable, i.e. are usually never found
+	/// in the AtomSpace in thier grounded form. If the only
+	/// connection between different parts of the pattern are virtual
+	/// clauses, then the pattern will split into multiple components,
+	/// each of which must be grounded separately, and then assembled
+	/// by determining if the virtual clasues that tie them together
+	/// are true or not.
+	///
 	HandleSeq _fixed;
 	size_t _num_virts;
 	HandleSeq _virtual;
 
+	/// The list of component_vars are the variables that appear
+	/// in the corresponding component.
 	size_t _num_comps;
 	HandleSeqSeq _components;
 	HandleSetSeq _component_vars;
@@ -113,17 +126,17 @@ protected:
 	                       const Handle& body,
 	                       Quotation quotation=Quotation());
 
-	void make_connectivity_map(const HandleSeq&);
-	void make_map_recursive(const Handle&, const Handle&);
+	void make_connectivity_map(void);
+	void make_map_recursive(const Handle&, const PatternTermPtr&);
 	void check_connectivity(const HandleSeqSeq&);
 	void check_satisfiability(const HandleSet&,
 	                          const HandleSetSeq&);
 
 	void make_term_trees();
-	void make_term_tree_recursive(const Handle&, const Handle&,
+	void make_term_tree_recursive(const PatternTermPtr&,
 	                              PatternTermPtr&);
 
-	void get_clause_variables(const HandleSeq&);
+	void get_clause_variables(const PatternTermSeq&);
 
 	void init(void);
 	void common_init(void);

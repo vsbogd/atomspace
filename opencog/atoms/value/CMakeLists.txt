@@ -12,6 +12,7 @@ ADD_LIBRARY (value
 	StringValue.cc
 	ValueFactory.cc
 	PtrValue.cc
+	VoidValue.cc
 )
 
 # Without this, parallel make will race and crap up the generated files.
@@ -38,5 +39,6 @@ INSTALL (FILES
 	Value.h
 	ValueFactory.h
 	PtrValue.h
+	VoidValue.h
 	DESTINATION "include/opencog/atoms/value"
 )

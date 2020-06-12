@@ -1,5 +1,5 @@
 /*
- * opencog/atoms/value/types.h
+ * opencog/atoms/atom_types/types.h
  *
  * Copyright (C) 2002-2007 Novamente LLC
  * All Rights Reserved
