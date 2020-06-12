@@ -152,7 +152,7 @@ bool is_quoted_in_tree(const Handle& tree, const Handle& atom);
 /**
  * Return true if the indicated atom occurs unquoted somewhere in the tree
  * (viz, the tree recursively spanned by the outgoing set of the handle)
- * but ONLY if it is not quoted!  This is meant to be be used to search
+ * but ONLY if it is not quoted!  This is meant to be used to search
  * for variables, but only those variables that have not been quoted, as
  * the quoted variables are constants (literals).
  */
@@ -320,11 +320,19 @@ bool is_unquoted_in_any_tree(const HandleSeq& trees,
                              const Handle& atom);
 
 /**
- * Returns true if the clause contains an atom of type atom_type.
- * ... but only if it is not quoted.  Quoted terms are constants (literals).
+ * Returns true if the `clause` contains an unquoted atom of type (or
+ * subtype of) `atom_type`.  Quoted terms are constants (literals).
  */
 bool contains_atomtype(const Handle& clause, Type atom_type,
                        Quotation quotation=Quotation());
+
+/**
+ * Returns a count of the number of times that an unquoted atom of
+ * type (or subtype of) `atom_type` appears in `clause`.  Quoted terms
+ * are constants (literals).
+ */
+size_t contains_atomtype_count(const Handle& clause, Type atom_type,
+                               Quotation quotation=Quotation());
 
 /**
  * Search for free (unscoped and unquoted) VariableNode in a tree.
@@ -357,6 +365,12 @@ HandleSet get_all_uniq_atoms(const Handle& h);
  * false otherwise.
  */
 bool is_closed(const Handle& h, Quotation quotation=Quotation());
+
+/**
+ * Return true only if `h` has no free variable in it, nor does it
+ * have any type specifications .. i.e. if `h` is not a deep type.
+ */
+bool is_constant(const Handle& h, Quotation quotation=Quotation());
 
 } // namespace opencog
 

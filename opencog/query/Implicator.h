@@ -24,53 +24,31 @@
 #ifndef _OPENCOG_IMPLICATOR_H
 #define _OPENCOG_IMPLICATOR_H
 
-#include <vector>
-
-#include <opencog/atomspace/AtomSpace.h>
-
-#include <opencog/atoms/execution/Instantiator.h>
-#include <opencog/query/PatternMatchCallback.h>
-
+#include "InitiateSearchMixin.h"
+#include "RewriteMixin.h"
+#include "SatisfyMixin.h"
+#include "TermMatchMixin.h"
 
 namespace opencog {
 
-/**
- * class Implicator -- pattern matching callback for grounding implicands.
- *
- * This class is meant to be used with the pattern matcher. When the
- * pattern matcher calls the callback, it will do so with a particular
- * grounding of the search pattern. If this class is holding an ungrounded
- * implicand, it will create a grounded version of the implicand. If
- * the implicand is already grounded, then it's a no-op -- this class
- * alone will *NOT* change its truth value.  Use a derived class for
- * this.
- *
- * The 'var_soln' argument in the callback contains the map from variables
- * to ground terms. 'class Instantiator' is used to perform the actual
- * grounding.  A set of grounded expressions is created in 'result_set'.
- * Note that the callback may be called many times reporting the same
- * results. In that case the 'result_set' will contain unique solutions.
- */
-class Implicator :
-	public virtual PatternMatchCallback
+class Implicator:
+	public InitiateSearchMixin,
+	public RewriteMixin,
+	public TermMatchMixin,
+	public SatisfyMixin
 {
-	protected:
-		AtomSpace* _as;
-
-		ValueSet _result_set;
-		void insert_result(const ValuePtr&);
-
 	public:
-		Implicator(AtomSpace* as) : _as(as), inst(as), max_results(SIZE_MAX) {}
-		Instantiator inst;
-		Handle implicand;
-		size_t max_results;
+		Implicator(AtomSpace* asp) :
+			InitiateSearchMixin(asp),
+			RewriteMixin(asp),
+			TermMatchMixin(asp) {}
 
-		virtual bool grounding(const GroundingMap &var_soln,
-		                       const GroundingMap &term_soln);
-
-		virtual const ValueSet& get_result_set() const
-		{ return _result_set; }
+			virtual void set_pattern(const Variables& vars,
+			                         const Pattern& pat)
+			{
+				InitiateSearchMixin::set_pattern(vars, pat);
+				TermMatchMixin::set_pattern(vars, pat);
+			}
 };
 
 }; // namespace opencog

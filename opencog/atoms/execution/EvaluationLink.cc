@@ -8,15 +8,18 @@
 #include <thread>
 
 #include <opencog/atoms/atom_types/atom_types.h>
-#include <opencog/atoms/truthvalue/SimpleTruthValue.h>
 #include <opencog/atoms/core/DefineLink.h>
 #include <opencog/atoms/core/LambdaLink.h>
 #include <opencog/atoms/core/NumberNode.h>
 #include <opencog/atoms/core/PutLink.h>
-#include <opencog/atoms/core/TruthValueOfLink.h>
 #include <opencog/atoms/execution/Instantiator.h>
+#include <opencog/atoms/flow/TruthValueOfLink.h>
+#include <opencog/atoms/flow/PredicateFormulaLink.h>
 #include <opencog/atoms/pattern/PatternLink.h>
 #include <opencog/atoms/reduct/FoldLink.h>
+#include <opencog/atoms/truthvalue/FormulaTruthValue.h>
+#include <opencog/atoms/truthvalue/SimpleTruthValue.h>
+#include <opencog/atoms/value/LinkValue.h>
 
 #include <opencog/atomspace/AtomSpace.h>
 #include <opencog/cython/PythonEval.h>
@@ -29,8 +32,8 @@
 
 using namespace opencog;
 
-EvaluationLink::EvaluationLink(const HandleSeq& oset, Type t)
-    : FreeLink(oset, t)
+EvaluationLink::EvaluationLink(const HandleSeq&& oset, Type t)
+    : FreeLink(std::move(oset), t)
 {
 	if (not nameserver().isA(t, EVALUATION_LINK))
 		throw RuntimeException(TRACE_INFO,
@@ -169,30 +172,75 @@ static bool greater(AtomSpace* as, const Handle& h, bool silent)
 	return (v0 > v1);
 }
 
-/// Check for syntactic equality
+static ValuePtr exec_or_eval(AtomSpace* as,
+                             const Handle& term,
+                             AtomSpace* scratch,
+                             bool silent)
+{
+	if (nameserver().isA(term->get_type(), EVALUATABLE_LINK))
+	{
+		try
+		{
+			return ValueCast(EvaluationLink::do_eval_scratch(as,
+			                    term, scratch, silent));
+		}
+		catch (const SilentException& ex)
+		{
+			return term;
+		}
+	}
+
+	Instantiator inst(as);
+	ValuePtr vp(inst.execute(term, silent));
+
+	// If the return value is a QueueValue, we assume that this
+	// is the result of executing a MeetLink or QueryLink.
+	// In this case, unwrap it, to get the "actual value".
+	// This feels slightly hacky, but will do for just right now.
+	if (QUEUE_VALUE == vp->get_type())
+	{
+		HandleSeq hs(LinkValueCast(vp)->to_handle_seq());
+		if (1 == hs.size())
+			vp = hs[0];
+	}
+	if (vp->is_atom()) scratch->add_atom(HandleCast(vp));
+	return vp;
+}
+
+/// Check for syntactic equality. Specifically, when comparing
+/// atoms, the handles MUST be the same handle.
+/// If there are two or more elements, they must ALL be equal.
 static bool identical(const Handle& h)
 {
 	const HandleSeq& oset = h->getOutgoingSet();
-	if (2 != oset.size())
-		throw SyntaxException(TRACE_INFO,
-		     "IdenticalLink expects two arguments");
+	size_t nelts = oset.size();
+	if (2 > nelts) return true;
 
-	return (oset[0] == oset[1]);
+	for (size_t j=1; j<nelts; j++)
+	{
+		if (oset[0] != oset[j]) return false;
+	}
+	return true;
 }
 
-/// Check for semantic equality
+/// Check for semantic equality. Specifically, when comparing
+/// atoms, then handles might be different, but the contents must
+/// compare as being the same, after the evaluation of the contents.
+/// If there are two or more elements, they must ALL be equal.
 static bool equal(AtomSpace* as, const Handle& h, bool silent)
 {
 	const HandleSeq& oset = h->getOutgoingSet();
-	if (2 != oset.size())
-		throw SyntaxException(TRACE_INFO,
-		     "EqualLink expects two arguments");
+	size_t nelts = oset.size();
+	if (2 > nelts) return true;
 
-	Instantiator inst(as);
-	Handle h0(HandleCast(inst.execute(oset[0], silent)));
-	Handle h1(HandleCast(inst.execute(oset[1], silent)));
+	ValuePtr v0(exec_or_eval(as, oset[0], as, silent));
 
-	return (h0 == h1);
+	for (size_t j=1; j<nelts; j++)
+	{
+		ValuePtr v1(exec_or_eval(as, oset[j], as, silent));
+		if (v0 != v1 and *v0 != *v1) return false;
+	}
+	return true;
 }
 
 /// Check for alpha equivalence. If the link contains no free
@@ -229,6 +277,85 @@ static bool alpha_equal(AtomSpace* as, const Handle& h, bool silent)
 	// Actually alpha-convert, and compare.
 	Handle h1a = v1.substitute_nocheck(h1, v0.varseq, silent);
 	return (*((AtomPtr)h0) == *((AtomPtr)h1a));
+}
+
+/// Check for set membership
+static bool member(AtomSpace* as, const Handle& h, bool silent)
+{
+	const HandleSeq& oset = h->getOutgoingSet();
+	if (2 != oset.size())
+		throw SyntaxException(TRACE_INFO,
+		     "MemberLink expects two arguments");
+
+	ValuePtr v0(exec_or_eval(as, oset[0], as, silent));
+	ValuePtr v1(exec_or_eval(as, oset[1], as, silent));
+
+	// Is v0 a member of v1?  This question makes sense only
+	// if v0 is an atom and v1 is a set.
+	if (not v0->is_atom()) return false;
+	if (not nameserver().isA(v1->get_type(), SET_LINK)) return false;
+
+	for (const Handle& hs: HandleCast(v1)->getOutgoingSet())
+	{
+		if (v0 == hs) return true;
+	}
+
+	return false;
+}
+
+/// Check for subset relationship
+static bool subset(AtomSpace* as, const Handle& h, bool silent)
+{
+	const HandleSeq& oset = h->getOutgoingSet();
+	if (2 != oset.size())
+		throw SyntaxException(TRACE_INFO,
+		     "SubsetLink expects two arguments");
+
+	ValuePtr v0(exec_or_eval(as, oset[0], as, silent));
+	ValuePtr v1(exec_or_eval(as, oset[1], as, silent));
+
+	// Is v0 a subset of v1?  This question makes sense only
+	// if v0 and v1 are sets.
+	if (not nameserver().isA(v0->get_type(), SET_LINK)) return false;
+	if (not nameserver().isA(v1->get_type(), SET_LINK)) return false;
+
+	const HandleSeq& superset(HandleCast(v1)->getOutgoingSet());
+	for (const Handle& h0: HandleCast(v0)->getOutgoingSet())
+	{
+		bool found = false;
+		for (const Handle& h1 : superset)
+		{
+			if (h0 == h1) {found = true; break;}
+		}
+		if (not found) return false;
+	}
+
+	return true;
+}
+
+/// Check to make sure all atoms differ
+static bool exclusive(AtomSpace* as, const Handle& h, bool silent)
+{
+	HandleSeq oset(h->getOutgoingSet());
+	ValueSeq vset;
+
+	size_t olen = oset.size();
+	while (true)
+	{
+		if (2 > olen) return true;
+
+		Handle last(oset.back());
+		oset.pop_back();
+		olen --;
+
+		ValuePtr v0(exec_or_eval(as, last, as, silent));
+		for (size_t j=0; j< olen; j++)
+		{
+			if (vset.size() <= j)
+				vset.push_back(exec_or_eval(as, oset[j], as, silent));
+			if (v0 == vset[j] or *v0 == *vset[j]) return false;
+		}
+	}
 }
 
 /** Return true if the SatisfactionLink can be "trivially" evaluated. */
@@ -299,8 +426,7 @@ static TruthValuePtr bool_to_tv(bool truf)
 	return TruthValue::FALSE_TV();
 }
 
-
-/// `crisp_eval_sratch()` -- evaluate any Atoms that can meaningfully
+/// `crisp_eval_scratch()` -- evaluate any Atoms that can meaningfully
 /// result in a crisp-logic, binary true/false truth value.
 ///
 /// There are two general kinds "truth values" that we are concerned
@@ -340,11 +466,19 @@ static TruthValuePtr bool_to_tv(bool truf)
 /// that were wrapped up by TrueLink, FalseLink. This is needed to get
 /// SequentialAndLink to work correctly, when moving down the sequence.
 ///
-static bool crisp_eval_scratch(AtomSpace* as,
-                               const Handle& evelnk,
-                               AtomSpace* scratch,
-                               bool silent)
+static bool crispy_eval_scratch(AtomSpace* as,
+                                const Handle& evelnk,
+                                AtomSpace* scratch,
+                                bool silent);
+
+static bool crispy_maybe(AtomSpace* as,
+                         const Handle& evelnk,
+                         AtomSpace* scratch,
+                         bool silent,
+                         bool& failed)
 {
+	failed = false;
+
 	Type t = evelnk->get_type();
 
 	// Logical constants
@@ -363,20 +497,9 @@ static bool crisp_eval_scratch(AtomSpace* as,
 		// atoms into the atomspace, to signal some event or state.
 		// These cannot be discarded. This is explictly tested by
 		// SequenceUTest::test_or_put().
-		if (0 < evelnk->get_arity())
-		{
-			const Handle& term = evelnk->getOutgoingAtom(0);
-			if (nameserver().isA(term->get_type(), EVALUATABLE_LINK))
-			{
-				EvaluationLink::do_eval_scratch(as, term, scratch, silent);
-			}
-			else
-			{
-				Instantiator inst(as);
-				Handle result(HandleCast(inst.execute(term, silent)));
-				if (result) scratch->add_atom(result);
-			}
-		}
+		for (const Handle& term : evelnk->getOutgoingSet())
+			exec_or_eval(as, term, scratch, silent);
+
 		if (TRUE_LINK == t) return true;
 		return false;
 	}
@@ -385,14 +508,14 @@ static bool crisp_eval_scratch(AtomSpace* as,
 	// Crisp-binary-valued Boolean Logical connectives
 	if (NOT_LINK == t)
 	{
-		return not crisp_eval_scratch(as,
+		return not crispy_eval_scratch(as,
 		      evelnk->getOutgoingAtom(0), scratch, silent);
 	}
 	else if (AND_LINK == t)
 	{
 		for (const Handle& h : evelnk->getOutgoingSet())
 		{
-			bool tv = crisp_eval_scratch(as, h, scratch, silent);
+			bool tv = crispy_eval_scratch(as, h, scratch, silent);
 			if (not tv) return false;
 		}
 		return true;
@@ -401,7 +524,7 @@ static bool crisp_eval_scratch(AtomSpace* as,
 	{
 		for (const Handle& h : evelnk->getOutgoingSet())
 		{
-			bool tv = crisp_eval_scratch(as, h, scratch, silent);
+			bool tv = crispy_eval_scratch(as, h, scratch, silent);
 			if (tv) return true;
 		}
 		return false;
@@ -421,7 +544,7 @@ static bool crisp_eval_scratch(AtomSpace* as,
 		{
 			for (size_t i=0; i<arity; i++)
 			{
-				bool tv = crisp_eval_scratch(as, oset[i], scratch, silent);
+				bool tv = crispy_eval_scratch(as, oset[i], scratch, silent);
 				if (not tv) return false;
 			}
 		} while (is_trec);
@@ -442,7 +565,7 @@ static bool crisp_eval_scratch(AtomSpace* as,
 		{
 			for (size_t i=0; i<arity; i++)
 			{
-				bool tv = crisp_eval_scratch(as, oset[i], scratch, silent);
+				bool tv = crispy_eval_scratch(as, oset[i], scratch, silent);
 				if (tv) return true;
 			}
 		} while (is_trec);
@@ -450,27 +573,18 @@ static bool crisp_eval_scratch(AtomSpace* as,
 	}
 
 	// -------------------------
-	// Arity-two relations
-	if (IDENTICAL_LINK == t)
-	{
-		return identical(evelnk);
-	}
-	else if (EQUAL_LINK == t)
-	{
-		return equal(scratch, evelnk, silent);
-	}
-	else if (ALPHA_EQUAL_LINK == t)
-	{
-		return alpha_equal(scratch, evelnk, silent);
-	}
-	else if (GREATER_THAN_LINK == t)
-	{
-		return greater(scratch, evelnk, silent);
-	}
+	// Assorted relations
+	if (IDENTICAL_LINK == t) return identical(evelnk);
+	if (EQUAL_LINK == t) return equal(scratch, evelnk, silent);
+	if (ALPHA_EQUAL_LINK == t) return alpha_equal(scratch, evelnk, silent);
+	if (GREATER_THAN_LINK == t) return greater(scratch, evelnk, silent);
+	if (MEMBER_LINK == t) return member(scratch, evelnk, silent);
+	if (SUBSET_LINK == t) return subset(scratch, evelnk, silent);
+	if (EXCLUSIVE_LINK == t) return exclusive(scratch, evelnk, silent);
 
 	// -------------------------
 	// Multi-threading primitives
-	if (JOIN_LINK == t)
+	if (THREAD_JOIN_LINK == t)
 	{
 		const HandleSeq& oset = evelnk->getOutgoingSet();
 		size_t arity = oset.size();
@@ -529,6 +643,20 @@ static bool crisp_eval_scratch(AtomSpace* as,
 		return false;
 	}
 
+	failed = true;
+	return false;
+}
+
+static bool crispy_eval_scratch(AtomSpace* as,
+                                const Handle& evelnk,
+                                AtomSpace* scratch,
+                                bool silent)
+{
+	bool failed;
+	bool tf = crispy_maybe(as, evelnk, scratch, silent, failed);
+	if (not failed)
+		return tf;
+
 	throwSyntaxException(silent,
 		"Either incorrect or not implemented yet. Cannot evaluate %s",
 		evelnk->to_string().c_str());
@@ -536,71 +664,39 @@ static bool crisp_eval_scratch(AtomSpace* as,
 	return false;
 }
 
-/// Evaluate a formula defined by a PREDICATE_FORMULA_LINK
-static TruthValuePtr eval_formula(AtomSpace* as,
-                                  const Handle& predform,
-                                  const HandleSeq& cargs,
-                                  bool silent)
+
+static TruthValuePtr reduce_formula(const Handle& pred,
+                                    const HandleSeq& args)
 {
-	// Collect up two floating point values.
-	std::vector<double> nums;
-	for (const Handle& h: predform->getOutgoingSet())
+	HandleSeq reduced;
+	for (Handle flh : pred->getOutgoingSet())
 	{
-		// An ordinary number.
-		if (NUMBER_NODE == h->get_type())
+		if (LAMBDA_LINK == flh->get_type())
+			flh = LambdaLinkCast(flh)->beta_reduce(args);
+
+		if (nameserver().isA(flh->get_type(), FUNCTION_LINK))
 		{
-			nums.push_back(NumberNodeCast(h)->get_value());
-			continue;
+			// The FunctionLink presumably has free variables in it.
+			// Reduce them with the provided arguments.
+			FunctionLinkPtr flp(FunctionLinkCast(flh));
+			const FreeVariables& fvars = flp->get_vars();
+			if (not fvars.empty())
+				flh = fvars.substitute_nocheck(flh, args);
 		}
+		else
+			// We expected something executable...
+			throw SyntaxException(TRACE_INFO,
+				"Expecting a Lambda or FunctionLink");
 
-		// In case the user wanted to wrap everything in a
-		// LambdaLink. I don't understand why this is needed,
-		// but it seems to make some people feel better, so
-		// we support it.
-		Handle flh(h);
-		if (LAMBDA_LINK == h->get_type())
-		{
-			// Set flh and fall through, where it is executed.
-			flh = LambdaLinkCast(h)->beta_reduce(cargs);
-		}
-
-		// At this point, we expect a FunctionLink of some kind.
-		if (not nameserver().isA(flh->get_type(), FUNCTION_LINK))
-			throw SyntaxException(TRACE_INFO, "Expecting a FunctionLink");
-
-		// If the FunctionLink has free variables in it,
-		// reduce them with the provided arguments.
-		FunctionLinkPtr flp(FunctionLinkCast(flh));
-		const FreeVariables& fvars = flp->get_vars();
-		if (not fvars.empty())
-		{
-			flh = fvars.substitute_nocheck(flh, cargs);
-		}
-
-		// Expecting a FunctionLink without variables.
-		ValuePtr v(flh->execute(as, silent));
-		Type vtype = v->get_type();
-		if (vtype == NUMBER_NODE)
-		{
-			nums.push_back(NumberNodeCast(v)->get_value());
-			continue;
-		}
-
-		if (nameserver().isA(vtype, FLOAT_VALUE))
-		{
-			FloatValuePtr fv(FloatValueCast(v));
-			nums.push_back(fv->value()[0]);
-			continue;
-		}
-
-		// If it is neither NumberNode nor a FloatValue...
-		throw RuntimeException(TRACE_INFO, "Expecting a FunctionLink that returns NumberNode/FloatValue");
+		// Wherever the args live, the reduced formula must
+		// live there also: it's lifettime must be identical
+		// to the args.
+		AtomSpace* as = args[0]->getAtomSpace();
+		flh = as->add_atom(flh);
+		reduced.push_back(flh);
 	}
 
-	// XXX FIXME; if we are given more than two floats, then
-	// perhaps we should create some other kind of TruthValue?
-	// Maybe a distributional one ?? Or a CountTV ??
-	return createSimpleTruthValue(nums);
+	return createFormulaTruthValue(std::move(reduced));
 }
 
 /// `do_eval_with_args()` -- evaluate a PredicateNode with arguments.
@@ -639,9 +735,10 @@ TruthValuePtr do_eval_with_args(AtomSpace* as,
 		}
 
 		if (PREDICATE_FORMULA_LINK == dtype)
-		{
-			return eval_formula(as, defn, cargs, silent);
-		}
+			return PredicateFormulaLinkCast(defn)->apply(as, cargs, silent);
+
+		if (DYNAMIC_FORMULA_LINK == dtype)
+			return reduce_formula(defn, cargs);
 
 		// If its not a LambdaLink, then I don't know what to do...
 		if (LAMBDA_LINK != dtype)
@@ -659,14 +756,28 @@ TruthValuePtr do_eval_with_args(AtomSpace* as,
 	// Like a GPN, but the entire function is declared in the
 	// AtomSpace.
 	if (PREDICATE_FORMULA_LINK == pntype)
+		return PredicateFormulaLinkCast(pn)->apply(as, cargs, silent);
+
+	if (DYNAMIC_FORMULA_LINK == pntype)
+		return reduce_formula(pn, cargs);
+
+	// Treat LambdaLink as if it were a PutLink -- perform
+	// the beta-reduction, and evaluate the result.
+	if (LAMBDA_LINK == pntype)
 	{
-		return eval_formula(as, pn, cargs, silent);
+		LambdaLinkPtr lam(LambdaLinkCast(pn));
+		Handle reduct = lam->beta_reduce(cargs);
+		return EvaluationLink::do_evaluate(as, reduct, silent);
 	}
 
+	// The remaining code below handles GROUNDED_PREDICATE_NODE
+	// Throw a silent exception; this is called in some try..catch blocks.
 	if (GROUNDED_PREDICATE_NODE != pntype)
 	{
-		// Throw a silent exception; this is called in some try..catch blocks.
-		throw NotEvaluatableException();
+		if (silent)
+			throw NotEvaluatableException();
+		throw SyntaxException(TRACE_INFO,
+			"This predicate is not evaluatable: %s", pn->to_string().c_str());
 	}
 
 	// Force execution of the arguments. We have to do this, because
@@ -674,7 +785,7 @@ TruthValuePtr do_eval_with_args(AtomSpace* as,
 	// to do lazy execution correctly. Right now, forcing is the policy.
 	// We could add "scm-lazy:" and "py-lazy:" URI's for user-defined
 	// functions smart enough to do lazy evaluation.
-	Handle lh(createLink(cargs, LIST_LINK));
+	Handle lh(createLink(std::move(cargs), LIST_LINK));
 	Handle args(force_execute(as, lh, silent));
 
 	// Get the schema name.
@@ -779,7 +890,7 @@ TruthValuePtr do_eval_with_args(AtomSpace* as,
 
 /// `do_eval_scratch()` -- evaluate any Atoms that can meaningfully
 /// result in a fuzzy or probabilistic truth value. See description
-/// for `crisp_eval_scratch()`, up above, for a general explanation.
+/// for `crispy_eval_scratch()`, up above, for a general explanation.
 /// This function handles miscellaneous Atoms that don't have a natural
 /// interpretation in terms of crisp truth values.
 ///
@@ -796,11 +907,13 @@ TruthValuePtr do_eval_with_args(AtomSpace* as,
 /// or `lib:` for haskell.  This method will then invoke `func_name`
 /// on the provided ListLink of arguments.
 ///
-TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
-                                              const Handle& evelnk,
-                                              AtomSpace* scratch,
-                                              bool silent)
+static TruthValuePtr tv_eval_scratch(AtomSpace* as,
+                                     const Handle& evelnk,
+                                     AtomSpace* scratch,
+                                     bool silent,
+                                     bool& try_crispy)
 {
+	try_crispy = false;
 	Type t = evelnk->get_type();
 	if (EVALUATION_LINK == t)
 	{
@@ -843,7 +956,8 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 		// directly, instead of going through the pattern matcher.
 		// The only reason we want to do even this much is to do
 		// tail-recursion optimization, if possible.
-		return do_eval_scratch(as, evelnk->getOutgoingAtom(0), scratch, silent);
+		return EvaluationLink::do_eval_scratch(as,
+		                     evelnk->getOutgoingAtom(0), scratch, silent);
 	}
 	else if (PUT_LINK == t)
 	{
@@ -865,17 +979,18 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 				goset.emplace_back(pl->get_vardecl());
 			goset.emplace_back(pl->get_body());
 			goset.emplace_back(gvals);
-			pl = createPutLink(goset);
+			pl = createPutLink(std::move(goset));
 		}
 		// Step (2)
 		Handle red = HandleCast(pl->execute(as));
 
 		// Step (3)
-		return do_eval_scratch(as, red, scratch, silent);
+		return EvaluationLink::do_eval_scratch(as, red, scratch, silent);
 	}
 	else if (DEFINED_PREDICATE_NODE == t)
 	{
-		return do_eval_scratch(as, DefineLink::get_definition(evelnk),
+		return EvaluationLink::do_eval_scratch(as,
+		                       DefineLink::get_definition(evelnk),
 		                       scratch, silent);
 	}
 	else if (// Links that evaluate to themselves
@@ -888,49 +1003,26 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 	}
 	else if (PREDICATE_FORMULA_LINK == t)
 	{
-		// A shortened, argument-free version of eval_formula()
-		std::vector<double> nums;
-		for (const Handle& h: evelnk->getOutgoingSet())
-		{
-			if (NUMBER_NODE == h->get_type())
-			{
-				nums.push_back(NumberNodeCast(h)->get_value());
-				continue;
-			}
-
-			if (not  h->is_executable())
-				throw SyntaxException(TRACE_INFO, "Expecting an executable Link");
-
-			ValuePtr v(h->execute(scratch, silent));
-			Type vtype = v->get_type();
-
-			if (NUMBER_NODE == vtype)
-			{
-				nums.push_back(NumberNodeCast(v)->get_value());
-				continue;
-			}
-
-			if (nameserver().isA(vtype, FLOAT_VALUE))
-			{
-				FloatValuePtr fv(FloatValueCast(v));
-				nums.push_back(fv->value().at(0));
-				continue;
-			}
-
-			throw RuntimeException(TRACE_INFO, "Expecting a FunctionLink that returns NumberNode/FloatValue");
-		}
-		return createSimpleTruthValue(nums);
+		return evelnk->evaluate(scratch, silent);
+	}
+	else if (DYNAMIC_FORMULA_LINK == t)
+	{
+		return createFormulaTruthValue(HandleSeq(evelnk->getOutgoingSet()));
 	}
 	else if (TRUTH_VALUE_OF_LINK == t)
 	{
 		// If the truth value of the link is being requested,
 		// then ... compute the truth value, on the fly!
 		Handle ofatom = evelnk->getOutgoingAtom(0);
-		TruthValuePtr tvp(EvaluationLink::do_eval_scratch(as,
-		                  ofatom, scratch, silent));
+		TruthValuePtr tvp;
+		if (nameserver().isA(ofatom->get_type(), EVALUATABLE_LINK))
+			tvp = EvaluationLink::do_eval_scratch(as,
+		                  ofatom, scratch, silent);
+		else
+			tvp = ofatom->getTruthValue();
 
 		// Cache the computed truth value...
-		// XXX FIXME: is this a good idea, or not?
+		// This seems like an OK idea, do users use it?
 		evelnk->setTruthValue(tvp);
 		return tvp;
 	}
@@ -946,7 +1038,22 @@ TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
 		return TruthValueCast(pap);
 	}
 
-	return bool_to_tv(crisp_eval_scratch(as, evelnk, scratch, silent));
+	try_crispy = true;
+	return nullptr;
+}
+
+TruthValuePtr EvaluationLink::do_eval_scratch(AtomSpace* as,
+                                              const Handle& evelnk,
+                                              AtomSpace* scratch,
+                                              bool silent)
+{
+	// Try the probabilistic ones first, then the crispy ones.
+	bool fail;
+	TruthValuePtr tvp = tv_eval_scratch(as, evelnk, scratch,
+	                                    silent, fail);
+	if (not fail) return tvp;
+
+	return bool_to_tv(crispy_eval_scratch(as, evelnk, scratch, silent));
 }
 
 TruthValuePtr EvaluationLink::do_evaluate(AtomSpace* as,
@@ -954,6 +1061,34 @@ TruthValuePtr EvaluationLink::do_evaluate(AtomSpace* as,
                                           bool silent)
 {
 	return do_eval_scratch(as, evelnk, as, silent);
+}
+
+bool EvaluationLink::crisp_eval_scratch(AtomSpace* as,
+                                        const Handle& evelnk,
+                                        AtomSpace* scratch,
+                                        bool silent)
+{
+	// Try the crispy ones first, then the probabilistic ones.
+	bool fuzzy;
+	bool tf = crispy_maybe(as, evelnk, scratch, silent, fuzzy);
+	if (not fuzzy) return tf;
+
+	bool fail;
+	const TruthValuePtr& tvp = tv_eval_scratch(as, evelnk, scratch,
+	                                           silent, fail);
+	if (not fail)
+		return tvp->get_mean() >= 0.5;
+
+	throwSyntaxException(silent,
+		"Either incorrect or not implemented yet. Cannot evaluate %s",
+		evelnk->to_string().c_str());
+}
+
+bool EvaluationLink::crisp_evaluate(AtomSpace* as,
+                                    const Handle& evelnk,
+                                    bool silent)
+{
+	return crisp_eval_scratch(as, evelnk, as, silent);
 }
 
 DEFINE_LINK_FACTORY(EvaluationLink, EVALUATION_LINK)

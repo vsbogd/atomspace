@@ -55,13 +55,15 @@ namespace opencog
 {
 
 //! UUID == Universally Unique Identifier
-typedef unsigned long UUID;
+typedef size_t UUID;
+
+//! ContentHash == 64-bit hash of an Atom.
 typedef size_t ContentHash;
 
 class Atom;
 typedef std::shared_ptr<Atom> AtomPtr;
 
-//! contains an unique identificator
+//! Pointer to an Atom, providing extra utility/convenience methods.
 class Handle : public AtomPtr
 {
 
@@ -203,8 +205,11 @@ typedef std::map<Handle, Handle> HandleMap;
 //! a hash table. Usually has faster insertion.
 typedef std::unordered_map<Handle, Handle> UnorderedHandleMap;
 
-//! an ordered map from Handle to Handle set
+//! an ordered map from Handle to HandleSet
 typedef std::map<Handle, HandleSet> HandleMultimap;
+
+//! an ordered map from Handle to HandleSeq
+typedef std::map<Handle, HandleSeq> HandleSeqMap;
 
 //! a sequence of ordered handle maps
 typedef std::vector<HandleMap> HandleMapSeq;
@@ -334,6 +339,8 @@ std::string oc_to_string(const UnorderedHandleMap& hm,
                          const std::string& indent=empty_string);
 std::string oc_to_string(const HandleMultimap& hmm,
                          const std::string& indent=empty_string);
+std::string oc_to_string(const HandleSeqMap& hsm,
+                         const std::string& indent=empty_string);
 std::string oc_to_string(const HandleMapSeq& hms,
                          const std::string& indent=empty_string);
 std::string oc_to_string(const HandleMapSeqSeq& hmss,
@@ -386,7 +393,7 @@ ostream& operator<<(ostream&, const opencog::HandleSet&);
 ostream& operator<<(ostream&, const opencog::UnorderedHandleSet&);
 ostream& operator<<(ostream&, const opencog::UnorderedHandleMap&);
 
-// This works for me, per note immediately above.
+// Hash, needed for std::unordered_map
 template<>
 struct hash<opencog::Handle>
 {
@@ -438,6 +445,43 @@ struct equal_to<opencog::HandlePair>
         std::equal_to<opencog::Handle> eq;
         return eq.operator()(lhp.first, rhp.first) and
                eq.operator()(lhp.second, rhp.second);
+    }
+};
+
+template<>
+struct hash<opencog::HandleSeq>
+{
+    typedef std::size_t result_type;
+    typedef opencog::HandleSeq argument_type;
+    std::size_t
+    operator()(const opencog::HandleSeq& hseq) const noexcept
+    {
+        std::size_t hsh = 0;
+        for (const opencog::Handle& h : hseq) hsh += hash_value(h);
+        return hsh;
+    }
+};
+
+// content-based equality
+template<>
+struct equal_to<opencog::HandleSeq>
+{
+    typedef bool result_type;
+    typedef opencog::HandleSeq first_argument;
+    typedef opencog::HandleSeq second_argument;
+    bool
+    operator()(const opencog::HandleSeq& lhs,
+               const opencog::HandleSeq& rhs) const noexcept
+    {
+        if (lhs == rhs) return true;
+        size_t len = lhs.size();
+        if (rhs.size() != len) return false;
+        std::equal_to<opencog::Handle> eq;
+        for (size_t i=0; i<len; i++)
+        {
+            if (not eq.operator()(lhs[i], rhs[i])) return false;
+        }
+        return true;
     }
 };
 

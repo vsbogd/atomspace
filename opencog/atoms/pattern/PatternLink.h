@@ -28,7 +28,6 @@
 #include <opencog/atoms/core/Quotation.h>
 #include <opencog/atoms/core/PrenexLink.h>
 #include <opencog/atoms/pattern/Pattern.h>
-#include <opencog/query/PatternMatchCallback.h>
 
 namespace opencog
 {
@@ -79,7 +78,7 @@ protected:
 	// The pattern that is specified by this link.
 	Pattern _pat;
 
-	/// The graph components. Set by validate_clauses()
+	/// The graph components. Set by validate_clauses().
 	/// "virtual" clauses are those that contain virtual links.
 	/// "fixed" clauses are those that do not.
 	/// The list of component_vars are the variables that appear
@@ -95,7 +94,7 @@ protected:
 
 	bool record_literal(const Handle&, bool reverse=false);
 	void unbundle_clauses(const Handle& body);
-	void unbundle_clauses_rec(const Handle&,
+	bool unbundle_clauses_rec(const Handle&,
 	                          const TypeSet&,
 	                          bool reverse=false);
 
@@ -124,6 +123,8 @@ protected:
 	void make_term_tree_recursive(const Handle&, const Handle&,
 	                              PatternTermPtr&);
 
+	void get_clause_variables(const HandleSeq&);
+
 	void init(void);
 	void common_init(void);
 	void setup_components(void);
@@ -136,18 +137,18 @@ protected:
 	}
 
 public:
-	PatternLink(const HandleSeq&, Type=PATTERN_LINK);
+	PatternLink(const HandleSeq&&, Type=PATTERN_LINK);
 	PatternLink(const Handle& body);
 	PatternLink(const Handle& varcdecls, const Handle& body);
 	PatternLink(const Variables&, const Handle&);
+
 	PatternLink(const PatternLink&) = delete;
 	PatternLink& operator=(const PatternLink&) = delete;
 
 	// Used only to set up multi-component links.
 	// DO NOT call this! (unless you are the component handler).
 	PatternLink(const HandleSet& vars,
-	            const VariableTypeMap& typemap,
-	            const GlobIntervalMap& intervalmap,
+	            const Variables& varspec,
 	            const HandleSeq& component,
 	            const HandleSeq& optionals);
 
@@ -155,17 +156,20 @@ public:
 	PatternLink(const HandleSet&,
 	            const HandleSeq&);
 
+	// Runtime just-in-time analysis
+	PatternLinkPtr jit_analyze(void);
+
 	// Return the list of variables we are holding.
 	const Variables& get_variables(void) const { return _variables; }
 	const Pattern& get_pattern(void) const { return _pat; }
 
 	const HandleSeqSeq& get_components(void) const { return _components; }
+	const HandleSeq& get_component_patterns(void) const
+		{ return _component_patterns; }
 
 	// Return the list of fixed and virtual clauses we are holding.
 	const HandleSeq& get_fixed(void) const { return _fixed; }
 	const HandleSeq& get_virtual(void) const { return _virtual; }
-
-	bool satisfy(PatternMatchCallback&) const;
 
 	void debug_log(void) const;
 

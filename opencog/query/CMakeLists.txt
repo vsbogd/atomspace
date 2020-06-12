@@ -1,14 +1,17 @@
 
 # Build the query-engine library
 ADD_LIBRARY(query-engine
-	DefaultPatternMatchCB.cc
-	Implicator.cc
-	InitiateSearchCB.cc
+	InitiateSearchMixin.cc
 	PatternMatchEngine.cc
-	PatternLinkRuntime.cc
 	Recognizer.cc
+	RewriteMixin.cc
 	Satisfier.cc
+	SatisfyMixin.cc
+	TermMatchMixin.cc
 )
+
+# Optionally enable debug logging for the pattern matcher.
+# TARGET_COMPILE_OPTIONS(query-engine PRIVATE -DQDEBUG=1)
 
 ADD_DEPENDENCIES(query-engine
 	opencog_atom_types
@@ -23,12 +26,13 @@ INSTALL (TARGETS query-engine
 	DESTINATION "lib${LIB_DIR_SUFFIX}/opencog")
 
 INSTALL (FILES
-	DefaultImplicator.h
-	DefaultPatternMatchCB.h
 	Implicator.h
-	InitiateSearchCB.h
+	InitiateSearchMixin.h
 	PatternMatchCallback.h
 	PatternMatchEngine.h
+	RewriteMixin.h
 	Satisfier.h
+	SatisfyMixin.h
+	TermMatchMixin.h
 	DESTINATION "include/opencog/query"
 )

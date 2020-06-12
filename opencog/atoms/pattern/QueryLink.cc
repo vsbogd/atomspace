@@ -23,8 +23,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <opencog/util/oc_assert.h>
 #include <opencog/atoms/atom_types/NameServer.h>
-#include <opencog/query/DefaultImplicator.h>
+#include <opencog/query/Implicator.h>
 #include <opencog/atoms/value/LinkValue.h>
 #include <opencog/atomspace/AtomSpace.h>
 
@@ -47,6 +48,10 @@ void QueryLink::init(void)
 	common_init();
 	setup_components();
 	_pat.redex_name = "anonymous QueryLink";
+
+#ifdef QDEBUG
+	logger().fine("Query: %s", to_long_string("").c_str());
+#endif
 }
 
 QueryLink::QueryLink(const Handle& vardecl,
@@ -59,8 +64,8 @@ QueryLink::QueryLink(const Handle& body, const Handle& rewrite)
 	: QueryLink(HandleSeq{body, rewrite})
 {}
 
-QueryLink::QueryLink(const HandleSeq& hseq, Type t)
-	: PatternLink(hseq, t)
+QueryLink::QueryLink(const HandleSeq&& hseq, Type t)
+	: PatternLink(std::move(hseq), t)
 {
 	init();
 }
@@ -70,34 +75,51 @@ QueryLink::QueryLink(const HandleSeq& hseq, Type t)
 /// Find and unpack variable declarations, if any; otherwise, just
 /// find all free variables.
 ///
-/// On top of that initialize _body and _implicand with the
-/// clauses and the rewrite rule.
+/// On top of that, initialize _body and _implicand with the
+/// clauses and the rewrite rule(s). (Multiple implicands are
+/// allowed, this can save some CPU cycles when one search needs to
+/// create several rewrites.)
 ///
 void QueryLink::extract_variables(const HandleSeq& oset)
 {
 	size_t sz = oset.size();
-	if (sz < 2 or 3 < sz)
+	if (sz < 2)
 		throw InvalidParamException(TRACE_INFO,
-			"Expecting an outgoing set size of at most two, got %d", sz);
+			"Expecting an outgoing set size of at least two, got %d", sz);
 
-	// If the outgoing set size is two, then there are no variable
-	// declarations; extract all free variables.
+	// If the outgoing set size is two, then there are no
+	// variable declarations; extract all free variables.
 	if (2 == sz)
 	{
 		_body = oset[0];
-		_implicand = oset[1];
+		_implicand.push_back(oset[1]);
 		_variables.find_variables(oset);
 		return;
 	}
 
-	// If we are here, then the first outgoing set member should be
-	// a variable declaration.
-	_vardecl = oset[0];
-	_body = oset[1];
-	_implicand = oset[2];
+	// Old-style declarations had variables in the first
+	// slot. If they are there, then respect that.
+	// Otherwise, the first slot holds the body.
+	size_t boff = 0;
+	Type vt = oset[0]->get_type();
+	if (VARIABLE_LIST == vt or
+	    VARIABLE_SET == vt or
+	    TYPED_VARIABLE_LINK == vt or
+	    VARIABLE_NODE == vt or
+	    GLOB_NODE == vt)
+	{
+		_vardecl = oset[0];
+		init_scoped_variables(_vardecl);
+		boff = 1;
+	}
+	_body = oset[boff];
 
-	// Initialize _variables with the scoped variables
-	init_scoped_variables(_vardecl);
+	// Hunt for variables only if they were  not declared.
+	// Mixing both styles together breaks unit tests.
+	if (0 == boff) _variables.find_variables(_body);
+
+	for (size_t i=boff+1; i < oset.size(); i++)
+		_implicand.push_back(oset[i]);
 }
 
 /* ================================================================= */
@@ -126,12 +148,9 @@ void QueryLink::extract_variables(const HandleSeq& oset)
  * atoms that could be a ground are found in the atomspace, then they
  * will be reported.
  */
-ValueSet QueryLink::do_execute(AtomSpace* as, bool silent)
+QueueValuePtr QueryLink::do_execute(AtomSpace* as, bool silent)
 {
 	if (nullptr == as) as = _atom_space;
-
-	DefaultImplicator impl(as);
-	impl.implicand = this->get_implicand();
 
 	/*
 	 * The `do_conn_check` flag stands for "do connectivity check"; if the
@@ -148,15 +167,15 @@ ValueSet QueryLink::do_execute(AtomSpace* as, bool silent)
 		                            "QueryLink consists of multiple "
 		                            "disconnected components!");
 
-	this->PatternLink::satisfy(impl);
+	Implicator impl(as);
+	impl.implicand = this->get_implicand();
+	impl.satisfy(PatternLinkCast(get_handle()));
 
 	// If we got a non-empty answer, just return it.
-	if (0 < impl.get_result_set().size())
-	{
-		// The result_set contains a list of the grounded expressions.
-		// (The order of the list has no significance, so it's really a set.)
-		return impl.get_result_set();
-	}
+	QueueValuePtr qv(impl.get_result_queue());
+	OC_ASSERT(qv->is_closed(), "Unexpected queue state!");
+	if (0 < qv->concurrent_queue<ValuePtr>::size())
+		return qv;
 
 	// If we are here, then there were zero matches.
 	//
@@ -172,24 +191,24 @@ ValueSet QueryLink::do_execute(AtomSpace* as, bool silent)
 	// Kripke frame: it holds everything we know "right now". The
 	// AbsentLink is a check for what we don't know, right now.
 	const Pattern& pat = this->get_pattern();
-	DefaultPatternMatchCB* intu =
-		dynamic_cast<DefaultPatternMatchCB*>(&impl);
+	TermMatchMixin* intu =
+		dynamic_cast<TermMatchMixin*>(&impl);
 	if (0 == pat.mandatory.size() and 0 < pat.optionals.size()
 	    and not intu->optionals_present())
 	{
-		ValueSet result;
-		result.insert(impl.inst.execute(impl.implicand, true));
-		return result;
+		qv->open();
+		for (const Handle& himp: impl.implicand)
+			qv->push(std::move(impl.inst.execute(himp, true)));
+		qv->close();
+		return qv;
 	}
 
-	return ValueSet();
+	return qv;
 }
 
 ValuePtr QueryLink::execute(AtomSpace* as, bool silent)
 {
-	// The result_set contains a list of the grounded expressions.
-	// (The order of the list has no significance, so it's really a set.)
-	return createLinkValue(do_execute(as, silent));
+	return do_execute(as, silent);
 }
 
 DEFINE_LINK_FACTORY(QueryLink, QUERY_LINK)

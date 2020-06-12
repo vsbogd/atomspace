@@ -243,20 +243,15 @@ public:
     inline ContentHash get_hash() const {
         if (Handle::INVALID_HASH != _content_hash)
             return _content_hash;
-        return compute_hash();
+        _content_hash = compute_hash();
+        return _content_hash;
     }
 
     virtual const std::string& get_name() const {
         throw RuntimeException(TRACE_INFO, "Not a node!");
     }
 
-    virtual Arity get_arity() const {
-        throw RuntimeException(TRACE_INFO, "Not a link!");
-    }
-
-    // Return the size of an atom. 1 if a node, 1 + sizes of its
-    // outgoings if a link. It does not discount redundant atoms.
-    virtual size_t size() const = 0;
+    virtual Arity get_arity() const { return size(); }
 
     virtual const HandleSeq& getOutgoingSet() const {
         throw RuntimeException(TRACE_INFO, "Not a link!");
@@ -305,7 +300,7 @@ public:
     std::string valuesToString() const;
 
     //! Get the size of the incoming set.
-    size_t getIncomingSetSize() const;
+    size_t getIncomingSetSize(AtomSpace* = nullptr) const;
 
     //! Return the incoming set of this atom.
     //! If the AtomSpace pointer is non-null, then only those atoms

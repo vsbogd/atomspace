@@ -21,13 +21,14 @@ class AtomSpace;
 class EvaluationLink : public FreeLink
 {
 public:
-	EvaluationLink(const HandleSeq&, Type=EVALUATION_LINK);
+	EvaluationLink(const HandleSeq&&, Type=EVALUATION_LINK);
 	EvaluationLink(const Handle& schema, const Handle& args);
 	EvaluationLink(const EvaluationLink&) = delete;
 	EvaluationLink& operator=(const EvaluationLink&) = delete;
 
+	virtual bool is_evaluatable() const { return true; }
 	TruthValuePtr evaluate(AtomSpace* as, bool silent) {
-		return do_evaluate(as, get_handle());
+		return do_evaluate(as, get_handle(), silent);
 	}
 
 	static TruthValuePtr do_evaluate(AtomSpace*, const Handle&,
@@ -36,6 +37,13 @@ public:
 	                                     const Handle&,
 	                                     AtomSpace* scratch,
 	                                     bool silent=false);
+
+	static bool crisp_evaluate(AtomSpace*, const Handle&,
+	                           bool silent=false);
+	static bool crisp_eval_scratch(AtomSpace* main,
+	                               const Handle&,
+	                               AtomSpace* scratch,
+	                               bool silent=false);
 
 	static Handle factory(const Handle&);
 };

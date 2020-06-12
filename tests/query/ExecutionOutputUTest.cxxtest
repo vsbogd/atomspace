@@ -67,12 +67,12 @@ public:
 	void test_clear_box_single_argument(void);
 	void test_clear_box_single_argument_link(void);
 	void test_value(void);
-	void test_exec_variable(void);
 	void test_recursion(void);
 	void test_lambda(void);
 	void test_lambda_get(void);
 	void test_implication_scope(void);
 	void test_variable_schema(void);
+	void test_exec_variable(void);
 };
 
 #define an as.add_node
@@ -234,7 +234,7 @@ void ExecutionOutputUTest::test_varsub(void)
 	      ),
 	   an(VARIABLE_NODE, "$action")
 	);
-	BindLinkPtr situation(createBindLink(situ->getOutgoingSet()));
+	BindLinkPtr situation(BindLinkCast(situ));
 
 	Handle pred =
 	al(BIND_LINK,
@@ -244,25 +244,27 @@ void ExecutionOutputUTest::test_varsub(void)
 	      ),
 	   an(VARIABLE_NODE, "$action")
 	);
-	BindLinkPtr predicament(createBindLink(pred->getOutgoingSet()));
+	BindLinkPtr predicament(BindLinkCast(pred));
 
 	// Now perform the search.
-	DefaultImplicator simpl(&as);
+	Implicator simpl(&as);
 	simpl.implicand = situation->get_implicand();
-	situation->satisfy(simpl);
+	simpl.satisfy(situation);
 
 	// The result_list contains a list of the grounded expressions.
-	Handle res = HandleCast(*simpl.get_result_set().begin());
+	simpl.get_result_queue()->open();
+	Handle res = HandleCast(simpl.get_result_queue()->value_pop());
 	printf("res is %s\n", res->to_short_string().c_str());
 	TSM_ASSERT_EQUALS("incorrect resolution", res, resolution);
 
 	// Now perform the search.
-	DefaultImplicator pimpl(&as);
+	Implicator pimpl(&as);
 	pimpl.implicand = predicament->get_implicand();
-	predicament->satisfy(pimpl);
+	pimpl.satisfy(predicament);
 
 	// The result_list contains a list of the grounded expressions.
-	Handle del = HandleCast(*pimpl.get_result_set().begin());
+	pimpl.get_result_queue()->open();
+	Handle del = HandleCast(pimpl.get_result_queue()->value_pop());
 	printf("del is %s\n", del->to_short_string().c_str());
 	TSM_ASSERT_EQUALS("incorrect delivarance", del, deliverance);
 
@@ -358,7 +360,7 @@ void ExecutionOutputUTest::test_value(void)
 	eval.eval("(load-from-path \"tests/query/exec-gsn.scm\")");
 
 	ValuePtr result = eval.eval_v("(cog-execute! exec-query-handle)");
-	TS_ASSERT_EQUALS(result->get_type(), LINK_VALUE);
+	TS_ASSERT(nameserver().isA(result->get_type(), LINK_VALUE));
 	ValueSeq vals = LinkValueCast(result)->value();
 	TS_ASSERT_EQUALS(vals.size(), 3);
 	for (const ValuePtr& va : vals)
@@ -366,7 +368,7 @@ void ExecutionOutputUTest::test_value(void)
 
 	//------------
 	result = eval.eval_v("(cog-execute! exec-query-link-value)");
-	TS_ASSERT_EQUALS(result->get_type(), LINK_VALUE);
+	TS_ASSERT(nameserver().isA(result->get_type(), LINK_VALUE));
 	vals = LinkValueCast(result)->value();
 	TS_ASSERT_EQUALS(vals.size(), 3);
 	for (const ValuePtr& va : vals)
@@ -374,7 +376,7 @@ void ExecutionOutputUTest::test_value(void)
 
 	//------------
 	result = eval.eval_v("(cog-execute! exec-query-string-value)");
-	TS_ASSERT_EQUALS(result->get_type(), LINK_VALUE);
+	TS_ASSERT(nameserver().isA(result->get_type(), LINK_VALUE));
 	vals = LinkValueCast(result)->value();
 	TS_ASSERT_EQUALS(vals.size(), 3);
 	for (const ValuePtr& va : vals)
@@ -382,7 +384,7 @@ void ExecutionOutputUTest::test_value(void)
 
 	//------------
 	result = eval.eval_v("(cog-execute! exec-query-truth-value)");
-	TS_ASSERT_EQUALS(result->get_type(), LINK_VALUE);
+	TS_ASSERT(nameserver().isA(result->get_type(), LINK_VALUE));
 	vals = LinkValueCast(result)->value();
 	TS_ASSERT_EQUALS(vals.size(), 3);
 	for (const ValuePtr& va : vals)
@@ -394,35 +396,6 @@ void ExecutionOutputUTest::test_value(void)
 	}
 
 	logger().debug("END TEST: %s", __FUNCTION__);
-}
-
-void ExecutionOutputUTest::test_exec_variable(void)
-{
-	al(DEFINE_LINK,
-		an(DEFINED_SCHEMA_NODE, "x+y"),
-		al(LAMBDA_LINK,
-			al(VARIABLE_LIST,
-				an(VARIABLE_NODE, "x"),
-				an(VARIABLE_NODE, "y")),
-			al(TIMES_LINK,
-				an(VARIABLE_NODE, "x"),
-				an(VARIABLE_NODE, "y"))
-		));
-	Handle get_link =
-	al(BIND_LINK,
-		al(TYPED_VARIABLE_LINK,
-			an(VARIABLE_NODE, "x"), an(TYPE_NODE, "DefinedSchemaNode")),
-		al(AND_LINK, al(TRUE_LINK, an(VARIABLE_NODE, "x"))),
-		al(EXECUTION_OUTPUT_LINK,
-			an(VARIABLE_NODE, "x"),
-			al(LIST_LINK, an(NUMBER_NODE, "6"), an(NUMBER_NODE, "7"))
-		)
-	);
-	Instantiator inst(&as);
-
-	ValuePtr result = inst.execute(get_link);
-
-	TS_ASSERT_EQUALS(result, al(SET_LINK, an(NUMBER_NODE, "42")));
 }
 
 // This tests recursion of ExecutionOutputLinks, on a classic algo:
@@ -570,3 +543,33 @@ void ExecutionOutputUTest::test_variable_schema(void)
 	ValuePtr result = inst.execute(get_link);
 	TS_ASSERT_EQUALS(result, al(SET_LINK, an(NUMBER_NODE, "42")));
 }
+
+void ExecutionOutputUTest::test_exec_variable(void)
+{
+	al(DEFINE_LINK,
+		an(DEFINED_SCHEMA_NODE, "x*y"),
+		al(LAMBDA_LINK,
+			al(VARIABLE_LIST,
+				an(VARIABLE_NODE, "x"),
+				an(VARIABLE_NODE, "y")),
+			al(TIMES_LINK,
+				an(VARIABLE_NODE, "x"),
+				an(VARIABLE_NODE, "y"))
+		));
+	Handle bind_link =
+	al(BIND_LINK,
+		al(TYPED_VARIABLE_LINK,
+			an(VARIABLE_NODE, "x"), an(TYPE_NODE, "DefinedSchemaNode")),
+		al(AND_LINK, al(PRESENT_LINK, an(VARIABLE_NODE, "x"))),
+		al(EXECUTION_OUTPUT_LINK,
+			an(VARIABLE_NODE, "x"),
+			al(LIST_LINK, an(NUMBER_NODE, "6"), an(NUMBER_NODE, "7"))
+		)
+	);
+	Instantiator inst(&as);
+
+	ValuePtr result = inst.execute(bind_link);
+
+	TS_ASSERT_EQUALS(result, al(SET_LINK, an(NUMBER_NODE, "42")));
+}
+

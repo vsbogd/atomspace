@@ -16,8 +16,8 @@ using namespace opencog;
 
 Handle TimesLink::one;
 
-TimesLink::TimesLink(const HandleSeq& oset, Type t)
-    : ArithmeticLink(oset, t)
+TimesLink::TimesLink(const HandleSeq&& oset, Type t)
+    : ArithmeticLink(std::move(oset), t)
 {
 	init();
 }
@@ -47,28 +47,20 @@ void TimesLink::init(void)
 ValuePtr TimesLink::kons(AtomSpace* as, bool silent,
                          const ValuePtr& fi, const ValuePtr& fj) const
 {
+	if (fj == knil)
+		return get_value(as, silent, fi);
+
 	// Try to yank out values, if possible.
 	ValuePtr vi(get_value(as, silent, fi));
 	Type vitype = vi->get_type();
 
-	ValuePtr vj(get_value(as, silent, fj));
+	ValuePtr vj(fj);
 	Type vjtype = vj->get_type();
 
 	// Is either one a TimesLink? If so, then flatten.
-	if (TIMES_LINK == vitype or TIMES_LINK == vjtype)
+	if (TIMES_LINK == vitype)
 	{
-		Handle hi(HandleCast(vi));
-		HandleSeq seq;
-		// flatten the left
-		if (TIMES_LINK == vitype)
-		{
-			for (const Handle& lhs: hi->getOutgoingSet())
-				seq.push_back(lhs);
-		}
-		else
-		{
-			seq.push_back(hi);
-		}
+		HandleSeq seq = HandleCast(vi)->getOutgoingSet();
 
 		// flatten the right
 		if (TIMES_LINK == vjtype)
@@ -80,9 +72,31 @@ ValuePtr TimesLink::kons(AtomSpace* as, bool silent,
 		{
 			seq.push_back(HandleCast(vj));
 		}
-		Handle foo(createLink(seq, TIMES_LINK));
-		TimesLinkPtr ap = TimesLinkCast(foo);
+		TimesLinkPtr ap = createTimesLink(std::move(seq));
 		return ap->delta_reduce(as, silent);
+	}
+
+	if (TIMES_LINK == vjtype)
+	{
+		// Paste on one at a time; this avoids what would otherwise
+		// be infinite recursion on `(Times A B C)` where kons was
+		// unable to reduce `(Times B C)`. So we instead try to do
+		// `(Times (Times A B) C)` which should work out...
+		ValuePtr vsum = vi;
+		for (const Handle& h : HandleCast(vj)->getOutgoingSet())
+		{
+			if (TIMES_LINK == vsum->get_type())
+			{
+				HandleSeq vout(HandleCast(vsum)->getOutgoingSet());
+				vout.push_back(h);
+				vsum = createTimesLink(std::move(vout));
+			}
+			else
+			{
+				vsum = kons(as, silent, vsum, h);
+			}
+		}
+		return vsum;
 	}
 
 	// Are they numbers? If so, perform vector (pointwise) subtraction.
@@ -102,9 +116,9 @@ ValuePtr TimesLink::kons(AtomSpace* as, bool silent,
 
 	// If either one is the unit, then just drop it.
 	if (NUMBER_NODE == vitype and content_eq(HandleCast(vi), one))
-		return sample_stream(vj, vjtype);
+		return vj;
 	if (NUMBER_NODE == vjtype and content_eq(HandleCast(vj), one))
-		return sample_stream(vi, vitype);
+		return vi;
 
    if (nameserver().isA(vjtype, NUMBER_NODE))
    {

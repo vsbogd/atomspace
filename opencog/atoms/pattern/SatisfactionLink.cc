@@ -40,8 +40,8 @@ void SatisfactionLink::init(void)
 	}
 }
 
-SatisfactionLink::SatisfactionLink(const HandleSeq& hseq, Type t)
-	: PatternLink(hseq, t)
+SatisfactionLink::SatisfactionLink(const HandleSeq&& hseq, Type t)
+	: PatternLink(std::move(hseq), t)
 {
 	init();
 }
@@ -50,15 +50,14 @@ TruthValuePtr SatisfactionLink::evaluate(AtomSpace* as, bool silent)
 {
 	if (nullptr == as) as = _atom_space;
 	Satisfier sater(as);
-	satisfy(sater);
+	sater.satisfy(PatternLinkCast(get_handle()));
 
-#define PLACE_RESULTS_IN_ATOMSPACE
-#ifdef PLACE_RESULTS_IN_ATOMSPACE
-	// Shoot. XXX FIXME. Most of the unit tests require that the atom
-	// that we return is in the atomspace. But it would be nice if we
-	// could defer this indefinitely, until its really needed.
-	Handle satgrd = as->add_atom(sater._ground);
-#endif /* PLACE_RESULTS_IN_ATOMSPACE */
+	// If there is an anchor, then attach results to the anchor.
+	if (_variables._anchor and as)
+	{
+		for (const Handle& h : sater._ground->getOutgoingSet())
+			as->add_link(MEMBER_LINK, h, _variables._anchor);
+	}
 
 	return sater._result;
 }

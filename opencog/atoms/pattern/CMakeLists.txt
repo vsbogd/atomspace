@@ -6,6 +6,8 @@ ADD_LIBRARY (lambda
 	BindLink.cc
 	DualLink.cc
 	GetLink.cc
+	MeetLink.cc
+	PatternJit.cc
 	PatternLink.cc
 	PatternTerm.cc
 	PatternUtils.cc
@@ -16,6 +18,8 @@ ADD_LIBRARY (lambda
 
 # Without this, parallel make will race and crap up the generated files.
 ADD_DEPENDENCIES(lambda opencog_atom_types)
+
+# TARGET_COMPILE_OPTIONS(lambda PRIVATE -DQDEBUG=1)
 
 TARGET_LINK_LIBRARIES(lambda
 	query-engine
@@ -32,6 +36,7 @@ INSTALL (FILES
 	BindLink.h
 	DualLink.h
 	GetLink.h
+	MeetLink.h
 	PatternLink.h
 	Pattern.h
 	PatternTerm.h

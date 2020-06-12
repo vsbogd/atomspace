@@ -1,8 +1,9 @@
 import unittest
 import threading
 
+from opencog.atomspace import create_child_atomspace
 from opencog.type_constructors import *
-from opencog.bindlink import execute_atom
+from opencog.execute import execute_atom
 from opencog.utilities import initialize_opencog, finalize_opencog
 from opencog.utilities import push_default_atomspace, get_default_atomspace
 
@@ -48,7 +49,7 @@ class DoExecuteTest(unittest.TestCase):
         self.assertEqual(NumberNode("7"), res)
 
     def test_add_atom_from_grounded_schema_node(self):
-        test_as = AtomSpace()
+        test_as = create_child_atomspace(self.atomspace)
         execute_atom(test_as,
                 ExecutionOutputLink(
                     GroundedSchemaNode("py:add_new_link"),
