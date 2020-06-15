@@ -696,11 +696,6 @@ TIME_LINK <- FUNCTION_LINK,NUMERIC_OUTPUT_LINK
 // Truth-value manipulating functions. Some of these return numbers,
 // some of these return truth values.
 
-APPLY_LINK <- EXECUTION_OUTPUT_LINK, VIRTUAL_LINK
-GROUNDED_FUNCTION_LINK <- ORDERED_LINK
-METHOD_OF_LINK <- GROUNDED_FUNCTION_LINK
-GROUNDED_OBJECT_NODE <- NODE
-
 // Return the indicated value on the indicated atom.
 // XXX FIXME - Not all ValueOfLinks are actually numeric; but there
 // is no way to tell, in advance. They may or may not be... when they
@@ -763,6 +758,13 @@ SLEEP_LINK <- FUNCTION_LINK,NUMERIC_OUTPUT_LINK
 // list, instead of the entire AtomSpace.  It is more-or-less analogous
 // to the standard functional-programming concept of "map".
 MAP_LINK <- FUNCTION_LINK
+
+// Special case of the ExecutionOutputLink to call a MethodOfLink on a
+// GroundedObjectNode
+APPLY_LINK <- EXECUTION_OUTPUT_LINK, VIRTUAL_LINK
+GROUNDED_FUNCTION_LINK <- ORDERED_LINK
+METHOD_OF_LINK <- GROUNDED_FUNCTION_LINK
+GROUNDED_OBJECT_NODE <- NODE
 
 // ==============================================================
 // Procedure and schema nodes.
