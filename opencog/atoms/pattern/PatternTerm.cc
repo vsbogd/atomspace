@@ -27,10 +27,13 @@ PatternTerm::PatternTerm(void)
 	  _is_globby_var(false),
 	  _has_any_evaluatable(false),
 	  _has_evaluatable(false),
+	  _is_virtual(false),
 	  _has_any_unordered_link(false),
 	  _is_literal(false),
 	  _is_present(false),
-	  _is_choice(false)
+	  _is_absent(false),
+	  _is_choice(false),
+	  _is_always(false)
 {}
 
 PatternTerm::PatternTerm(const PatternTermPtr& parent, const Handle& h)
@@ -45,10 +48,13 @@ PatternTerm::PatternTerm(const PatternTermPtr& parent, const Handle& h)
 	  _is_globby_var(false),
 	  _has_any_evaluatable(false),
 	  _has_evaluatable(false),
+	  _is_virtual(false),
 	  _has_any_unordered_link(false),
 	  _is_literal(false),
 	  _is_present(false),
-	  _is_choice(false)
+	  _is_absent(false),
+	  _is_choice(false),
+	  _is_always(false)
 {
 	Type t = h->get_type();
 
@@ -137,7 +143,7 @@ void PatternTerm::addAnyBoundVar()
 	if (not _has_any_bound_var)
 	{
 		_has_any_bound_var = true;
-		if (_parent != PatternTerm::UNDEFINED)
+		if (_parent->_handle)
 			_parent->addAnyBoundVar();
 	}
 }
@@ -154,7 +160,7 @@ void PatternTerm::addBoundVariable()
 	// Mark just this term (the variable itself)
 	// and mark the term that holds us.
 	_is_bound_var = true;
-	if (_parent != PatternTerm::UNDEFINED)
+	if (_parent->_handle)
 			_parent->_has_bound_var = true;
 
 	// Mark recursively, all the way to the root.
@@ -169,7 +175,7 @@ void PatternTerm::addAnyGlobbyVar()
 	if (not _has_any_globby_var)
 	{
 		_has_any_globby_var = true;
-		if (_parent != PatternTerm::UNDEFINED)
+		if (_parent->_handle)
 			_parent->addAnyGlobbyVar();
 	}
 }
@@ -180,7 +186,7 @@ void PatternTerm::addGlobbyVar()
 
 	_is_globby_var = true;
 
-	if (_parent != PatternTerm::UNDEFINED)
+	if (_parent->_handle)
 		_parent->_has_globby_var = true;
 
 	addAnyGlobbyVar();
@@ -192,22 +198,31 @@ void PatternTerm::addGlobbyVar()
 
 void PatternTerm::addAnyEvaluatable()
 {
-	if (not _has_any_evaluatable)
-	{
-		_has_any_evaluatable = true;
-		if (_parent != PatternTerm::UNDEFINED)
-			_parent->addAnyEvaluatable();
-	}
+	if (_has_any_evaluatable) return;
+
+	_has_any_evaluatable = true;
+	if (_parent->_handle)
+		_parent->addAnyEvaluatable();
 }
 
 void PatternTerm::addEvaluatable()
 {
 	_has_evaluatable = true;
 
-	if (_parent != PatternTerm::UNDEFINED)
+	if (_parent->_handle)
 		_parent->_has_evaluatable = true;
 
 	addAnyEvaluatable();
+}
+
+// ==============================================================
+
+void PatternTerm::markVirtual()
+{
+	// If quoted, it cannot be evaluated.
+	if (isQuoted()) return;
+
+	_is_virtual = true;
 }
 
 // ==============================================================
@@ -217,7 +232,7 @@ void PatternTerm::addUnorderedLink()
 	if (_has_any_unordered_link) return;
 
 	_has_any_unordered_link = true;
-	if (_parent != PatternTerm::UNDEFINED)
+	if (_parent->_handle)
 		_parent->addUnorderedLink();
 }
 
@@ -228,6 +243,8 @@ void PatternTerm::markLiteral()
 	if (_is_literal) return;
 
 	_is_literal = true;
+	_has_evaluatable = false;
+	_has_any_evaluatable = false;
 	for (PatternTermPtr& ptm : getOutgoingSet())
 		ptm->markLiteral();
 }
@@ -248,6 +265,16 @@ void PatternTerm::markPresent()
 
 // ==============================================================
 
+void PatternTerm::markAbsent()
+{
+	// If quoted, it cannot be interpreted as absent.
+	if (isQuoted()) return;
+
+	_is_absent = true;
+}
+
+// ==============================================================
+
 void PatternTerm::markChoice()
 {
 	// If its literal, its effectively quoted, so cannot be a choice.
@@ -264,15 +291,87 @@ void PatternTerm::markChoice()
 
 // ==============================================================
 
-std::string PatternTerm::to_string() const { return to_string(": "); }
+void PatternTerm::markAlways()
+{
+	// If its quoted, it cannot be always.
+	if (isQuoted()) return;
+
+	_is_always = true;
+}
+
+// ==============================================================
+
+std::string PatternTerm::to_short_string() const { return to_string(": "); }
+
+std::string PatternTerm::to_short_string(const std::string& sep) const
+{
+	// Term is null-terminated at the top.
+	// Top term never has a handle in it.
+	if (not _handle) return "-";
+	std::string str = _parent->to_short_string(sep);
+	str += sep + _handle->id_to_string();
+	return str;
+}
+
+std::string PatternTerm::flag_string() const
+{
+	std::string str;
+	if (isQuoted()) str += "Q: ";
+	if (_has_any_bound_var) str += "HABV: ";
+	if (_has_bound_var) str += "HBV: ";
+	if (_is_bound_var) str += "BV: ";
+	if (_has_any_globby_var) str += "HAGV: ";
+	if (_has_globby_var) str += "HGV: ";
+	if (_is_globby_var) str += "GV: ";
+	if (_has_any_evaluatable) str += "EE: ";
+	if (_has_evaluatable) str += "E: ";
+	if (_is_virtual) str += "V: ";
+	if (_has_any_unordered_link) str += "U: ";
+	if (_is_literal) str += "L: ";
+	if (_is_present) str += "P: ";
+	if (_is_absent) str += "A: ";
+	if (_is_choice) str += "C: ";
+	if (_is_always) str += "AW: ";
+	str += _handle->id_to_string();
+	return str;
+}
+
+std::string PatternTerm::to_string() const { return to_string(""); }
 
 std::string PatternTerm::to_string(const std::string& indent) const
 {
-	// Term is null-terminated at thye top.
+	// Term is null-terminated at the top.
 	// Top term never has a handle in it.
-	if (not _handle) return "-";
-	std::string str = _parent->to_string();
-	str += indent + _handle->id_to_string();
+	if (not _handle) return "\n";
+	std::string str = _parent->to_string(indent + "   ");
+	str += indent;
+	str += nameserver().getTypeName(getQuote()->get_type()) + " : ";
+	str += flag_string() + "\n";
+	return str;
+}
+
+std::string PatternTerm::to_full_string() const { return to_full_string(""); }
+
+std::string PatternTerm::to_full_string(const std::string& indent) const
+{
+	if (getQuote()->is_node())
+	{
+		std::string str = getQuote()->to_short_string(indent);
+		str += "\t; " + flag_string() + "\n";
+		return str;
+	}
+
+	std::string str = indent;
+	std::string more_indent = indent + "  "; // two spaces
+	str += "(" + nameserver().getTypeName(getQuote()->get_type());
+	str += "\t\t; " + flag_string() + "\n";
+	for (const PatternTermPtr& ptm: getOutgoingSet())
+	{
+		if (str.back() == ')') str += "\n";
+		str += ptm->to_full_string(more_indent);
+	}
+	if (str.back() != ')') str += indent;
+	str += ")";
 	return str;
 }
 
@@ -281,9 +380,22 @@ std::string oc_to_string(const PatternTerm& pt, const std::string& indent)
 	return pt.to_string(indent);
 }
 
-std::string oc_to_string(const PatternTermPtr& pt_ptr, const std::string& indent)
+std::string oc_to_string(const PatternTermPtr& ptr, const std::string& indent)
 {
-	return pt_ptr->to_string();
+	return ptr->to_string();
+}
+
+std::string oc_to_string(const PatternTermSeq& pts, const std::string& indent)
+{
+	std::string str;
+	size_t i=0;
+	for (const PatternTermPtr& ptm : pts)
+	{
+		str += indent + "term[" + std::to_string(i) + "]:\n";
+		str += ptm->to_full_string(indent + "  ") + "\n";
+		i++;
+	}
+	return str;
 }
 
 } // ~namespace opencog

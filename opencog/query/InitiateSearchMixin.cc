@@ -54,7 +54,6 @@ InitiateSearchMixin::InitiateSearchMixin(AtomSpace* as) :
 {
 	_variables = nullptr;
 	_pattern = nullptr;
-	_dynamic = nullptr;
 	_recursing = false;
 
 	_root = PatternTerm::UNDEFINED;
@@ -70,7 +69,6 @@ void InitiateSearchMixin::set_pattern(const Variables& vars,
 {
 	_variables = &vars;
 	_pattern = &pat;
-	_dynamic = &pat.evaluatable_terms;
 }
 
 
@@ -123,9 +121,11 @@ void InitiateSearchMixin::set_pattern(const Variables& vars,
 //
 
 Handle
-InitiateSearchMixin::find_starter(const Handle& h, size_t& depth,
+InitiateSearchMixin::find_starter(const PatternTermPtr& ptm,
+                                  size_t& depth,
                                   Handle& startrm, size_t& width)
 {
+	const Handle& h = ptm->getHandle();
 	// If its a node, then we are done.
 	Type t = h->get_type();
 	if (_nameserver.isNode(t))
@@ -140,13 +140,16 @@ InitiateSearchMixin::find_starter(const Handle& h, size_t& depth,
 	}
 
 	// If its a link, then find recursively
-	return find_starter_recursive(h, depth, startrm, width);
+	return find_starter_recursive(ptm, depth, startrm, width);
 }
 
 Handle
-InitiateSearchMixin::find_starter_recursive(const Handle& h, size_t& depth,
+InitiateSearchMixin::find_starter_recursive(const PatternTermPtr& ptm,
+                                            size_t& depth,
                                             Handle& startrm, size_t& width)
 {
+	const Handle& h = ptm->getHandle();
+
 	// If its a node, then we are done. Don't modify either depth or
 	// start.
 	Type t = h->get_type();
@@ -161,7 +164,7 @@ InitiateSearchMixin::find_starter_recursive(const Handle& h, size_t& depth,
 	}
 
 	// Ignore all dynamically-evaluatable links up front.
-	if (_dynamic->find(h) != _dynamic->end())
+	if (ptm->hasEvaluatable())
 		return Handle::UNDEFINED;
 
 	// Iterate over all the handles in the outgoing set.
@@ -172,7 +175,7 @@ InitiateSearchMixin::find_starter_recursive(const Handle& h, size_t& depth,
 	Handle hdeepest(Handle::UNDEFINED);
 	size_t thinnest = SIZE_MAX;
 
-	for (Handle hunt : h->getOutgoingSet())
+	for (const PatternTermPtr& hunt : ptm->getOutgoingSet())
 	{
 		size_t brdepth = depth + 1;
 		size_t brwid = SIZE_MAX;
@@ -182,10 +185,6 @@ InitiateSearchMixin::find_starter_recursive(const Handle& h, size_t& depth,
 		// any choice link.
 		Handle sbr(startrm);
 		if (CHOICE_LINK != t) sbr = h;
-
-		// Blow past the QuoteLinks, since they just screw up the search start.
-		if (Quotation::is_quotation_type(hunt->get_type()))
-			hunt = hunt->getOutgoingAtom(0);
 
 		Handle s(find_starter_recursive(hunt, brdepth, sbr, brwid));
 
@@ -224,7 +223,6 @@ InitiateSearchMixin::find_starter_recursive(const Handle& h, size_t& depth,
  * exist in the atomspace, anyway.
  */
 Handle InitiateSearchMixin::find_thinnest(const PatternTermSeq& clauses,
-                                          const HandleSet& evl,
                                           Handle& starter_term,
                                           PatternTermPtr& bestclause)
 {
@@ -238,13 +236,13 @@ Handle InitiateSearchMixin::find_thinnest(const PatternTermSeq& clauses,
 	for (const PatternTermPtr& ptm: clauses)
 	{
 		// Cannot start with an evaluatable clause!
-		if (0 < evl.count(ptm->getHandle())) continue;
+		if (ptm->hasAnyEvaluatable()) continue;
 
 		_curr_clause = ptm;
 		size_t depth = 0;
 		size_t width = SIZE_MAX;
 		Handle term(Handle::UNDEFINED);
-		Handle start(find_starter(ptm->getHandle(), depth, term, width));
+		Handle start(find_starter(ptm, depth, term, width));
 		if (start
 		    and (width < thinnest
 		         or (width == thinnest and depth > deepest)))
@@ -304,7 +302,7 @@ bool InitiateSearchMixin::setup_neighbor_search(void)
 	bool try_optionals = true;
 	for (const PatternTermPtr& m : _pattern->pmandatory)
 	{
-		if (0 == _pattern->evaluatable_holders.count(m->getHandle()))
+		if (not m->hasAnyEvaluatable())
 		{
 			try_optionals = false;
 			break;
@@ -327,8 +325,7 @@ bool InitiateSearchMixin::setup_neighbor_search(void)
 	// no constants in them at all.  In this case, the search is
 	// performed by looping over all links of the given types.
 	PatternTermPtr bestclause;
-	Handle best_start = find_thinnest(clauses, _pattern->evaluatable_holders,
-	                                  _starter_term, bestclause);
+	Handle best_start = find_thinnest(clauses, _starter_term, bestclause);
 
 	// Cannot find a starting point! This can happen if:
 	// 1) all of the clauses contain nothing but variables,
@@ -366,11 +363,11 @@ bool InitiateSearchMixin::choice_loop(PatternMatchCallback& pmc,
 		_starter_term = ch.start_term;
 		_search_set = ch.search_set;
 
-		DO_LOG({LAZY_LOG_FINE << "Choice loop start term is: "
-		              << (_starter_term == (Atom*) nullptr ?
-		                  "UNDEFINED" : _starter_term->to_string());})
-		DO_LOG({LAZY_LOG_FINE << "Choice loop root clause is: "
-		              <<  _root->getHandle()->to_string();})
+		DO_LOG({LAZY_LOG_FINE << "Choice loop start term is:\n"
+		              << (_starter_term == (Atom*) nullptr ? "UNDEFINED" :
+		                  _starter_term->to_short_string("       "));})
+		DO_LOG({LAZY_LOG_FINE << "Choice loop root clause is:\n"
+		              <<  _root->to_full_string();})
 
 		bool found = search_loop(pmc, dbg_banner);
 		// Terminate search if satisfied.
@@ -495,7 +492,7 @@ bool InitiateSearchMixin::perform_search(PatternMatchCallback& pmc)
 	{
 		PatternMatchEngine pme(pmc);
 		pme.set_pattern(*_variables, *_pattern);
-		return pme.explore_constant_evaluatables(_pattern->mandatory);
+		return pme.explore_constant_evaluatables(_pattern->pmandatory);
 	}
 
 	DO_LOG({logger().fine("Cannot use no-var search, use deep-type search");})
@@ -736,7 +733,7 @@ bool InitiateSearchMixin::setup_link_type_search()
 	{
 		// Evaluatables don't exist in the atomspace, in general.
 		// Cannot start a search with them.
-		if (0 < _pattern->evaluatable_holders.count(cl->getHandle())) continue;
+		if (cl->hasAnyEvaluatable()) continue;
 		const size_t prev = count;
 		find_rarest(cl, _starter_term, count);
 		if (count < prev)
@@ -754,10 +751,10 @@ bool InitiateSearchMixin::setup_link_type_search()
 	if (PatternTerm::UNDEFINED == _root)
 		return false;
 
-	DO_LOG({LAZY_LOG_FINE << "Start clause is: " << std::endl
-	                      << _root->getHandle()->to_string();})
-	DO_LOG({LAZY_LOG_FINE << "Start term is: " << std::endl
-	                      << _starter_term->to_string();})
+	DO_LOG({LAZY_LOG_FINE << "Start clause is:\n"
+		                   << _root->to_full_string();})
+	DO_LOG({LAZY_LOG_FINE << "Start term is:\n"
+	                      << _starter_term->to_short_string();})
 
 	// Get type of the rarest link
 	Type ptype = _starter_term->get_type();
@@ -795,7 +792,7 @@ bool InitiateSearchMixin::setup_variable_search(void)
 	bool all_clauses_are_evaluatable = true;
 	for (const PatternTermPtr& cl : clauses)
 	{
-		if (0 < _pattern->evaluatable_holders.count(cl->getHandle())) continue;
+		if (cl->hasAnyEvaluatable()) continue;
 		all_clauses_are_evaluatable = false;
 		break;
 	}
@@ -810,7 +807,7 @@ bool InitiateSearchMixin::setup_variable_search(void)
 	bool empty = false;
 	for (const Handle& var: _variables->varset)
 	{
-		DO_LOG({LAZY_LOG_FINE << "Examine variable " << var->to_string();})
+		DO_LOG({LAZY_LOG_FINE << "Examine variable " << var->to_short_string();})
 
 		const auto& tit = _variables->_simple_typemap.find(var);
 		if (_variables->_simple_typemap.end() == tit) continue;
@@ -823,7 +820,7 @@ bool InitiateSearchMixin::setup_variable_search(void)
 		for (Type t : typeset)
 			num += (size_t) _as->get_num_atoms_of_type(t);
 
-		DO_LOG({LAZY_LOG_FINE << var->to_string() << " has "
+		DO_LOG({LAZY_LOG_FINE << var->to_short_string() << " has "
 		                      << num << " atoms in the atomspace";})
 
 		if (0 == num) empty = true;
@@ -836,7 +833,7 @@ bool InitiateSearchMixin::setup_variable_search(void)
 				// they are all evaluatable, in which case we pick a clause
 				// that has a variable with the narrowest type-membership.
 				if (not all_clauses_are_evaluatable and
-				    0 < _pattern->evaluatable_holders.count(cl->getHandle())) continue;
+				    cl->hasAnyEvaluatable()) continue;
 
 				if (cl->getHandle() == var)
 				{
@@ -907,7 +904,7 @@ bool InitiateSearchMixin::setup_variable_search(void)
 		// the EvaluationLinks to be evaluated later.
 		for (const PatternTermPtr& m : _pattern->pmandatory)
 		{
-			if (0 == _pattern->evaluatable_holders.count(m->getHandle()))
+			if (not m->hasAnyEvaluatable())
 			{
 				_root = m;
 				_starter_term = m->getHandle();
@@ -997,8 +994,9 @@ bool InitiateSearchMixin::search_loop(PatternMatchCallback& pmc,
 		for (const Handle& h : _search_set)
 		{
 			DO_LOG({LAZY_LOG_FINE << dbg_banner
-			             << "\nLoop candidate (" << ++i << "/" << hsz << "):\n"
-			             << h->to_string();})
+			             << "\n       Loop candidate ("
+			             << ++i << "/" << hsz << "):\n"
+			             << h->to_short_string("       ");})
 			bool found = pme.explore_neighborhood(_starter_term, h, _root);
 			if (found) return true;
 		}
@@ -1060,8 +1058,9 @@ bool InitiateSearchMixin::search_loop(PatternMatchCallback& pmc,
 
 		Handle h(_search_set[j]);
 		DO_LOG({LAZY_LOG_FINE << dbg_banner
-		             << "\nLoop candidate (" << ++i << "/" << hsz << "):\n"
-		             << h->to_string();})
+		             << "\n       Loop candidate ("
+		             << ++i << "/" << hsz << "):\n"
+		             << h->to_short_string("       ");})
 		if (pme.explore_neighborhood(_starter_term, h, _root)) nfnd++;
 	}
 	_recursing = false;
@@ -1082,9 +1081,6 @@ std::string InitiateSearchMixin::to_string(const std::string& indent) const
 	if (_pattern)
 		ss << indent << "_pattern:" << std::endl
 		   << _pattern->to_string(indent + oc_to_string_indent) << std::endl;
-	if (_dynamic)
-		ss << indent << "_dynamic:" << std::endl
-		   << oc_to_string(*_dynamic, indent + oc_to_string_indent) << std::endl;
 	if (_root)
 		ss << indent << "_root:" << std::endl
 		   << _root->getHandle()->to_string(indent + oc_to_string_indent) << std::endl;

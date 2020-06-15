@@ -63,8 +63,22 @@ static inline void logmsg(const char * msg, const Handle& h)
 {
 	LAZY_LOG_FINE << msg << std::endl
 	              << (h == (Atom*) nullptr ?
-	                  std::string("(invalid handle)") :
-	                  h->to_short_string());
+	                  std::string("       (invalid handle)") :
+	                  h->to_short_string("       "));
+}
+
+static inline void logmsg(const char * msg, const PatternTermPtr& ptm)
+{
+	LAZY_LOG_FINE << msg << ptm->to_string("       ")
+	              << ptm->getQuote()->to_short_string("       ");
+}
+
+static inline void logmsg(const char * msg, const PatternTermPtr& ptm,
+                          bool rslt)
+{
+	LAZY_LOG_FINE << msg << ptm->to_string("       ")
+	              << ptm->getQuote()->to_short_string("       ")
+	              << "\n       Found: " << rslt;
 }
 
 static inline void logmsg(const char * msg, size_t n)
@@ -77,9 +91,11 @@ static inline void logmsg(const char * msg)
 	LAZY_LOG_FINE << msg;
 }
 #else
-static inline void logmsg(const char * msg, const Handle& h) {}
-static inline void logmsg(const char * msg, size_t n) {}
-static inline void logmsg(const char * msg) {}
+static inline void logmsg(const char*, const PatternTermPtr&, bool) {}
+static inline void logmsg(const char*, const PatternTermPtr&) {}
+static inline void logmsg(const char*, const Handle&) {}
+static inline void logmsg(const char*, size_t) {}
+static inline void logmsg(const char*) {}
 #endif
 
 
@@ -227,7 +243,7 @@ bool PatternMatchEngine::ordered_compare(const PatternTermPtr& ptm,
 	}
 
 	depth --;
-	logmsg("ordered_compare match?=", match);
+	logmsg("ordered_compare match?:", match);
 
 	if (not match)
 	{
@@ -1176,7 +1192,7 @@ bool PatternMatchEngine::tree_compare(const PatternTermPtr& ptm,
 	bool match = _pmc.link_match(ptm, hg);
 	if (not match) return false;
 
-	logmsg("depth=", depth);
+	logmsg("tree depth:", depth);
 	logmsg("tree_compare:", hp);
 	logmsg("to:", hg);
 
@@ -1249,7 +1265,7 @@ bool PatternMatchEngine::explore_term_branches(const Handle& term,
 
 	for (const PatternTermPtr &ptm : pl->second)
 	{
-		DO_LOG({LAZY_LOG_FINE << "Begin exploring term: " << ptm->to_string();})
+		logmsg("Begin exploring term:", ptm);
 		bool found;
 		if (ptm->hasAnyGlobbyVar())
 			found = explore_glob_branches(ptm, hg, clause);
@@ -1258,9 +1274,7 @@ bool PatternMatchEngine::explore_term_branches(const Handle& term,
 		else
 			found = explore_type_branches(ptm, hg, clause);
 
-		DO_LOG({LAZY_LOG_FINE << "Finished exploring term: "
-		                      << ptm->to_string()
-		                      << " found=" << found; })
+		logmsg("Finished exploring term:", ptm, found);
 		if (found) return true;
 	}
 	return false;
@@ -1379,7 +1393,7 @@ bool PatternMatchEngine::explore_upvar_branches(const PatternTermPtr& ptm,
 	IncomingSet iset = _pmc.get_incoming_set(hg, t);
 	size_t sz = iset.size();
 	DO_LOG({LAZY_LOG_FINE << "Looking upward at term = "
-	                      << parent->getHandle()->to_string() << std::endl
+	                      << parent->getQuote()->to_string() << std::endl
 	                      << "The grounded pivot point " << hg->to_string()
 	                      << " has " << sz << " branches";})
 
@@ -1425,7 +1439,7 @@ bool PatternMatchEngine::explore_upvar_branches(const PatternTermPtr& ptm,
 	}
 	_perm_breakout = nullptr;
 
-	DO_LOG({LAZY_LOG_FINE << "Found upward soln = " << found;})
+	logmsg("Found upward soln =", found);
 	return found;
 }
 
@@ -1447,8 +1461,8 @@ bool PatternMatchEngine::explore_upglob_branches(const PatternTermPtr& ptm,
 
 	size_t sz = iset.size();
 	DO_LOG({LAZY_LOG_FINE << "Looking globby upward for term = "
-	                      << parent->getHandle()->to_string() << std::endl
-	                      << "It's grounding " << hg->to_string()
+	                      << parent->getQuote()->to_string() << std::endl
+	                      << "It's grounding " << hg->to_short_string()
 	                      << " has " << sz << " branches";})
 
 	// Move up the solution graph, looking for a match.
@@ -1509,7 +1523,7 @@ bool PatternMatchEngine::explore_glob_branches(const PatternTermPtr& ptm,
 		// if (explore_odometer(ptm, hg, clause))
 		if (explore_type_branches(ptm, hg, clause))
 			return true;
-		DO_LOG({logger().fine("Globby clause not grounded; try again");})
+		logmsg("Globby clause not grounded; try again");
 	}
 	while (_glob_state.size() > gstate_size);
 
@@ -1535,8 +1549,7 @@ bool PatternMatchEngine::explore_odometer(const PatternTermPtr& ptm,
 		_perm_take_step = true;
 		_perm_go_around = false;
 
-		DO_LOG({LAZY_LOG_FINE << "ODO STEP unordered beneath term: "
-		                      << ptm->to_string();})
+		logmsg("ODO STEP unordered beneath term:", ptm);
 		if (explore_type_branches(ptm, hg, clause))
 			return true;
 	}
@@ -1568,7 +1581,7 @@ bool PatternMatchEngine::explore_unordered_branches(const PatternTermPtr& ptm,
 		if (explore_single_branch(ptm, hg, clause))
 			return true;
 
-		DO_LOG({logger().fine("Step to next permutation");})
+		logmsg("Step to next permutation");
 
 		// If we are here, there was no match.
 		// On the next go-around, take a step.
@@ -1579,7 +1592,7 @@ bool PatternMatchEngine::explore_unordered_branches(const PatternTermPtr& ptm,
 
 	_perm_take_step = false;
 	_perm_have_more = false;
-	DO_LOG({logger().fine("No more unordered permutations");})
+	logmsg("No more unordered permutations");
 
 	return false;
 }
@@ -1633,7 +1646,7 @@ bool PatternMatchEngine::explore_choice_branches(const PatternTermPtr& ptm,
 	throw RuntimeException(TRACE_INFO,
 		"Maybe this works but its not tested!! Find out!");
 
-	DO_LOG({logger().fine("Begin choice branchpoint iteration loop");})
+	logmsg("Begin choice branchpoint iteration loop");
 	do {
 		// XXX This `need_choice_push` thing is probably wrong; it probably
 		// should resemble the perm_push() used for unordered links.
@@ -1648,14 +1661,14 @@ bool PatternMatchEngine::explore_choice_branches(const PatternTermPtr& ptm,
 		if (match)
 			return true;
 
-		DO_LOG({logger().fine("Step to next choice");})
+		logmsg("Step to next choice");
 		// If we are here, there was no match.
 		// On the next go-around, take a step.
 		_choose_next = true;
 	} while (have_choice(ptm, hg));
 
-	DO_LOG({logger().fine("Exhausted all choice possibilities"
-	              "\n----------------------------------");})
+	logmsg("Exhausted all choice possibilities"
+	       "\n----------------------------------");
 	return false;
 }
 
@@ -1808,21 +1821,20 @@ bool PatternMatchEngine::explore_single_branch(const PatternTermPtr& ptm,
 {
 	solution_push();
 
-	DO_LOG({LAZY_LOG_FINE << "ssss Checking term=" << ptm->to_string()
-	                      << " for soln by " << hg->id_to_string();})
+	logmsg("ssss Checking term:", ptm);
+	logmsg("ssss For soln by:", hg);
 
 	bool match = tree_compare(ptm, hg, CALL_SOLN);
 
 	if (not match)
 	{
-		DO_LOG({LAZY_LOG_FINE << "ssss NO solution for term="
-		                      << ptm->to_string()
-		                      << " its NOT solved by " << hg->id_to_string();})
+		logmsg("ssss NO solution for term:", ptm);
+		logmsg("ssss NOT solved by:", hg);
 		solution_pop();
 		return false;
 	}
 
-	logmsg("ssss Solved term:", ptm->getHandle());
+	logmsg("ssss Solved term:", ptm);
 	logmsg("ssss It is solved by:", hg);
 	logmsg("ssss will move up.");
 
@@ -1890,69 +1902,21 @@ bool PatternMatchEngine::do_term_up(const PatternTermPtr& ptm,
 	// find its parent in the clause. For an evaluatable term, we find
 	// the parent evaluatable in the clause, which may be many steps
 	// higher.
-	DO_LOG({LAZY_LOG_FINE << "Term = " << ptm->to_string()
-	              << "\n" << ptm->getHandle()->to_string()
-	              // << "\nof clause = " << clause->getHandle()->to_string()
-	              << "\nhas ground, move upwards";})
+	logmsg("This term has ground, move upwards:", ptm);
 
-	const Handle& hp = ptm->getHandle();
-	if (0 < _pat->in_evaluatable.count(hp))
+	if (ptm->hasAnyEvaluatable())
 	{
-		// If we are here, there are four possibilities:
-		// 1) `hp` is not in any evaluatable that lies between it and
-		//    the clause root.  In this case, we need to fall through
-		//    to the bottom.
-		// 2) The evaluatable is the clause root. We evaluate it, and
-		//    consider the clause satisfied if the evaluation returns
-		//    true. In that case, we continue to the next clause, else we
-		//    backtrack.
-		// 3) The evaluatable is in the middle of a clause, in which case,
-		//    it's parent must be a logical connective: an AndLink, an
-		//    OrLink or a NotLink. In this case, we have to loop over
-		//    all of the evaluatables within this clause, and connect
-		//    them as appropriate. The structure may be non-trivial, so
-		//    that presents a challange.  However, it must be logical
-		//    connectives all the way up to the root of the clause, so the
-		//    easiest thing to do is simply to start at the top, and
-		//    recurse downwards.  Ergo, this is much like case 2): the
-		//    evaluation either suceeds or fails; we proceed or backtrack.
-		// 4) The evaluatable is in the middle of something else. We don't
-		//    know what that means, so we throw an error. Actually, this
-		//    is too harsh. It may be in the middle of some function that
-		//    expects a boolean value as an argument. But I don't know of
-		//    any, just right now.
-		//
-		// Anyway, all of this talk abbout booleans is emphasizing the
-		// point that, someday, we need to replace this crisp logic with
-		// probabalistic logic of some sort.
-		//
-		// By the way, if we are here, then `hp` is surely a variable;
-		// or, at least, it is, if we are working in the canonical
-		// interpretation.
+		// XXX TODO make sure that all variables in the clause have
+		// been grounded!  If they're not, something is badly wrong!
+		logmsg("Term inside evaluatable, move up to it's top:",
+			       clause->getHandle());
 
-		auto evra = _pat->in_evaluatable.equal_range(hp);
-		for (auto evit = evra.first; evit != evra.second; evit++)
-		{
-			if (not is_unquoted_in_tree(clause->getHandle(), evit->second))
-				continue;
+		bool found = _pmc.evaluate_sentence(clause->getHandle(), var_grounding);
+		logmsg("After evaluating clause, found = ", found);
+		if (found)
+			return clause_accept(clause, hg);
 
-			logmsg("Term inside evaluatable, move up to it's top:",
-			       evit->second);
-
-			// All of the variables occurring in the term should have
-			// grounded by now. If not, then its virtual term, and we
-			// shouldn't even be here (we can't just backtrack, and
-			// try again later).  So validate the grounding, but leave
-			// the evaluation for the callback.
-// XXX TODO count the number of ungrounded vars !!! (make sure its zero)
-
-			bool found = _pmc.evaluate_sentence(clause->getHandle(), var_grounding);
-			DO_LOG({logger().fine("After evaluating clause, found = %d", found);})
-			if (found)
-				return clause_accept(clause, hg);
-
-			return false;
-		}
+		return false;
 	}
 
 	const PatternTermPtr& parent = ptm->getParent();
@@ -1968,14 +1932,14 @@ bool PatternMatchEngine::do_term_up(const PatternTermPtr& ptm,
 	if (not parent->isChoice())
 	{
 		bool found = explore_up_branches(ptm, hg, clause);
-		DO_LOG({logger().fine("After moving up the clause, found = %d", found);})
+		logmsg("After moving up the clause, found = ", found);
 		return found;
 	}
 
 	// If we are here, then we have Choice term.
 	if (parent == clause)
 	{
-		DO_LOG({logger().fine("Exploring Choice term at root");})
+		logmsg("Exploring Choice term at root");
 		return clause_accept(clause, hg);
 	}
 
@@ -1986,7 +1950,7 @@ bool PatternMatchEngine::do_term_up(const PatternTermPtr& ptm,
 	// (hop up) past the Choice term, before resuming the search.
 	// The easiest way to hop is to do it recursively... i.e.
 	// call ourselves again.
-	DO_LOG({logger().fine("Exploring Choice term below root");})
+	logmsg("Exploring Choice term below root");
 
 	OC_ASSERT(not have_choice(parent, hg),
 	          "Something is wrong with the Choice code");
@@ -2011,28 +1975,28 @@ bool PatternMatchEngine::clause_accept(const PatternTermPtr& clause,
 	// make the final decision; if callback rejects, then it's the
 	// same as a mismatch; try the next one.
 	bool match;
-	if (is_optional(clause))
+	if (clause->isAbsent())
 	{
 		clause_accepted = true;
 		match = _pmc.optional_clause_match(clause_root, hg, var_grounding);
-		DO_LOG({logger().fine("optional clause match callback match=%d", match);})
+		logmsg("Optional clause match callback match=", match);
 	}
 	else
-	if (is_always(clause))
+	if (clause->isAlways())
 	{
 		_did_check_forall = true;
 		match = _pmc.always_clause_match(clause_root, hg, var_grounding);
 		_forall_state = _forall_state and match;
-		DO_LOG({logger().fine("for-all clause match callback match=%d", match);})
+		logmsg("For-all clause match callback match=", match);
 	}
 	else
 	{
 		match = _pmc.clause_match(clause_root, hg, var_grounding);
-		DO_LOG({logger().fine("clause match callback match=%d", match);})
+		logmsg("clause match callback match=", match);
 	}
 	if (not match) return false;
 
-	if (not is_evaluatable(clause))
+	if (not clause->hasAnyEvaluatable())
 	{
 		clause_grounding[clause_root] = hg;
 
@@ -2097,7 +2061,7 @@ bool PatternMatchEngine::do_next_clause(void)
 	if (PatternTerm::UNDEFINED == next_clause)
 	{
 		bool found = report_grounding(var_grounding, clause_grounding);
-		DO_LOG(logger().fine("==================== FINITO! accepted=%d", found);)
+		logmsg("==================== FINITO! accepted=", found);
 		DO_LOG(log_solution(var_grounding, clause_grounding);)
 		clause_stacks_pop();
 		return found;
@@ -2110,9 +2074,9 @@ bool PatternMatchEngine::do_next_clause(void)
 
 	logmsg("Next clause is", do_clause->getHandle());
 	DO_LOG({LAZY_LOG_FINE << "This clause is "
-		              << (is_optional(do_clause)? "optional" : "required");})
+		              << (do_clause->isAbsent()? "absent" : "required");})
 	DO_LOG({LAZY_LOG_FINE << "This clause is "
-		              << (is_evaluatable(do_clause)?
+		              << (do_clause->hasAnyEvaluatable()?
 		                  "dynamically evaluatable" : "non-dynamic");
 	logmsg("Joining variable is", joiner);
 	logmsg("Joining grounding is", var_grounding[joiner]); })
@@ -2145,12 +2109,12 @@ bool PatternMatchEngine::do_next_clause(void)
 	// clauses that don't have matches.
 	while ((false == found) and
 	       (false == clause_accepted) and
-	       (is_optional(next_clause)))
+	       (next_clause->isAbsent()))
 	{
 		Handle curr_root = next_clause->getHandle();
 		static Handle undef(Handle::UNDEFINED);
 		bool match = _pmc.optional_clause_match(curr_root, undef, var_grounding);
-		DO_LOG({logger().fine("Exhausted search for optional clause, cb=%d", match);})
+		logmsg("Exhausted search for optional clause, cb=", match);
 		if (not match) {
 			clause_stacks_pop();
 			return false;
@@ -2162,8 +2126,8 @@ bool PatternMatchEngine::do_next_clause(void)
 
 		if (PatternTerm::UNDEFINED == next_clause)
 		{
-			DO_LOG({logger().fine("==================== FINITO BANDITO!");
-			log_solution(var_grounding, clause_grounding);})
+			logmsg("==================== FINITO BANDITO!");
+			DO_LOG({log_solution(var_grounding, clause_grounding);})
 			found = report_grounding(var_grounding, clause_grounding);
 		}
 		else
@@ -2224,36 +2188,28 @@ bool PatternMatchEngine::do_next_clause(void)
 void PatternMatchEngine::get_next_untried_clause(void)
 {
 	// First, try to ground all the mandatory clauses, only.
-	// no virtuals, no black boxes, no optionals.
-	if (get_next_thinnest_clause(false, false, false)) return;
+	// no virtuals, no black boxes, no absents.
+	if (get_next_thinnest_clause(false, false)) return;
 
 	// Don't bother looking for evaluatables if they are not there.
-	if (not _pat->evaluatable_holders.empty())
+	if (_pat->have_evaluatables)
 	{
-		if (get_next_thinnest_clause(true, false, false)) return;
-		if (not _pat->black.empty())
-		{
-			if (get_next_thinnest_clause(true, true, false)) return;
-		}
+		if (get_next_thinnest_clause(true, false)) return;
 	}
 
-	// Try again, this time, considering the optional clauses.
-	if (not _pat->optionals.empty())
+	// Try again, this time, considering the absent clauses.
+	if (not _pat->absents.empty())
 	{
-		if (get_next_thinnest_clause(false, false, true)) return;
-		if (not _pat->evaluatable_holders.empty())
+		if (get_next_thinnest_clause(false, true)) return;
+		if (_pat->have_evaluatables)
 		{
-			if (get_next_thinnest_clause(true, false, true)) return;
-			if (not _pat->black.empty())
-			{
-				if (get_next_thinnest_clause(true, true, true)) return;
-			}
+			if (get_next_thinnest_clause(true, true)) return;
 		}
 	}
 
 	// Now loop over all for-all clauses.
-	// I think that all variables will be grounded at this point, right?
-	for (const PatternTermPtr& root : _pat->palways)
+	// All variables must neccessarily be grounded at this point.
+	for (const PatternTermPtr& root : _pat->always)
 	{
 		if (issued.end() != issued.find(root)) continue;
 		issued.insert(root);
@@ -2367,9 +2323,8 @@ Handle PatternMatchEngine::get_glob_embedding(const Handle& glob)
 /// else all clauses are considered.
 ///
 /// Return true if we found the next ungrounded clause.
-bool PatternMatchEngine::get_next_thinnest_clause(bool search_virtual,
-                                                  bool search_black,
-                                                  bool search_optionals)
+bool PatternMatchEngine::get_next_thinnest_clause(bool search_eval,
+                                                  bool search_absents)
 {
 	// Search for an as-yet ungrounded clause. Search for required
 	// clauses first; then, only if none of those are left, move on
@@ -2432,9 +2387,8 @@ bool PatternMatchEngine::get_next_thinnest_clause(bool search_virtual,
 		{
 			const PatternTermPtr& root = it->second;
 			if ((issued.end() == issued.find(root))
-			        and (search_virtual or not is_evaluatable(root))
-			        and (search_black or not is_black(root))
-			        and (search_optionals or not is_optional(root)))
+			        and (search_eval or not root->hasAnyEvaluatable())
+			        and (search_absents or not root->isAbsent()))
 			{
 				unsigned int root_thickness = thickness(root, ungrounded_vars);
 				if (root_thickness < thinnest_clause)
@@ -2453,8 +2407,7 @@ bool PatternMatchEngine::get_next_thinnest_clause(bool search_virtual,
 	// will not find them. Try these now. This means that the
 	// variable-free clauses run last. If the user wants to run them
 	// earlier, they can always use a SequentialAndLink.
-	if (not unsolved and search_virtual and
-		 (search_black or _pat->black.empty()))
+	if (not unsolved and search_eval)
 	{
 		for (const PatternTermPtr& root : _pat->pmandatory)
 		{
@@ -2512,8 +2465,7 @@ bool PatternMatchEngine::get_next_thinnest_clause(bool search_virtual,
 void PatternMatchEngine::clause_stacks_push(void)
 {
 	_clause_stack_depth++;
-	DO_LOG({logger().fine("--- CLAUSE stack push to depth=%d",
-	              _clause_stack_depth);})
+	logmsg("--- CLAUSE stack push to depth=", _clause_stack_depth);
 
 	var_solutn_stack.push(var_grounding);
 	_clause_solutn_stack.push(clause_grounding);
@@ -2557,7 +2509,7 @@ void PatternMatchEngine::clause_stacks_pop(void)
 	perm_pop();
 
 	_clause_stack_depth --;
-	DO_LOG({logger().fine("CLAUSE stack pop to depth %d", _clause_stack_depth);})
+	logmsg("CLAUSE stack pop to depth", _clause_stack_depth);
 }
 
 /**
@@ -2690,6 +2642,7 @@ bool PatternMatchEngine::explore_neighborhood(const Handle& term,
 	clause_stacks_clear();
 	clear_current_state();
 	issued.insert(clause);
+	_nack_cache.clear();
 
 	bool halt = explore_clause(term, grnd, clause);
 	bool stop = report_forall();
@@ -2747,12 +2700,12 @@ bool PatternMatchEngine::explore_clause_direct(const Handle& term,
                                                const PatternTermPtr& clause)
 {
 	// If we are looking for a pattern to match, then ... look for it.
-	DO_LOG({logger().fine("Clause is matchable; start matching it");})
+	logmsg("Clause is matchable; start matching it");
 
 	_did_check_forall = false;
 	bool found = explore_term_branches(term, grnd, clause);
 
-	if (not _did_check_forall and is_always(clause))
+	if (not _did_check_forall and clause->isAlways())
 	{
 		// We need to record failures for the AlwaysLink
 		Handle empty;
@@ -2767,7 +2720,7 @@ bool PatternMatchEngine::explore_clause_evaluatable(const Handle& term,
                                                     const Handle& grnd,
                                                     const PatternTermPtr& clause)
 {
-	DO_LOG({logger().fine("Clause is evaluatable; start evaluating it");})
+	logmsg("Clause is evaluatable; start evaluating it");
 
 	// Some people like to have a clause that is just one big
 	// giant variable, matching almost anything. Keep these folks
@@ -2781,12 +2734,12 @@ bool PatternMatchEngine::explore_clause_evaluatable(const Handle& term,
 	OC_ASSERT(is_clause_grounded(clause), "Internal error!");
 
 	bool found = _pmc.evaluate_sentence(clause->getHandle(), var_grounding);
-	DO_LOG({logger().fine("Post evaluating clause, found = %d", found);})
+	logmsg("Post evaluating clause, found = ", found);
 	if (found)
 	{
 		return clause_accept(clause, grnd);
 	}
-	else if (is_always(clause))
+	else if (clause->isAlways())
 	{
 		// We need to record failures for the AlwaysLink
 		Handle empty;
@@ -2858,7 +2811,7 @@ bool PatternMatchEngine::explore_clause(const Handle& term,
                                         const PatternTermPtr& pclause)
 {
 	// Evaluatable clauses are not cacheable.
-	if (is_evaluatable(pclause))
+	if (pclause->hasAnyEvaluatable())
 		return explore_clause_evaluatable(term, grnd, pclause);
 
 	// Build the cache lookup key
@@ -2956,12 +2909,14 @@ void PatternMatchEngine::clear_current_state(void)
 	issued.clear();
 }
 
-bool PatternMatchEngine::explore_constant_evaluatables(const HandleSeq& clauses)
+bool PatternMatchEngine::explore_constant_evaluatables(const PatternTermSeq& clauses)
 {
 	bool found = true;
-	for (const Handle& clause : clauses) {
-		if (is_in(clause, _pat->evaluatable_holders)) {
-			found = _pmc.evaluate_sentence(clause, GroundingMap());
+	for (const PatternTermPtr& clause : clauses)
+	{
+		if (clause->hasAnyEvaluatable())
+		{
+			found = _pmc.evaluate_sentence(clause->getHandle(), GroundingMap());
 			if (not found)
 				break;
 		}
@@ -3072,11 +3027,11 @@ void PatternMatchEngine::log_solution(
 		if (not m->second)
 		{
 			Handle mf(m->first);
-			logmsg("Ungrounded clause", mf);
+			logmsg("Ungrounded (absent) clause", mf);
 			continue;
 		}
-		std::string str = m->second->to_short_string();
-		logger().fine("%d.   %s", i, str.c_str());
+		std::string str = m->second->to_short_string("       ");
+		logger().fine("Clause %d:\n%s", i, str.c_str());
 	}
 }
 
