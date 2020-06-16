@@ -49,7 +49,7 @@ namespace opencog {
 struct Pattern
 {
 	/// Private, locally scoped typedefs, not used outside of this class.
-	typedef std::unordered_multimap<Handle, Handle> ConnectMap;
+	typedef std::unordered_multimap<Handle, PatternTermPtr> ConnectMap;
 
 	/// Each atom of the pattern may appear in several clauses. Moreover,
 	/// the same atom may be repeated in the same clause in several
@@ -69,9 +69,11 @@ struct Pattern
 	/// with a PatternTerm.  Each PatternTerm corresponds to a unique
 	/// position in the pattern. Thus, for each Atom, and each clause,
 	/// there is at least one, and maybe more PatternTerms. This
-	/// collection of PattternTerms is stored in a PatternTermSeq.
-	typedef HandlePair AtomInClausePair;  // first is atom
+	/// collection of PatternTerms is stored in a PatternTermSeq.
+	typedef std::pair<Handle, PatternTermPtr> AtomInClausePair;
 	typedef std::map<AtomInClausePair, PatternTermSeq> ConnectTermMap;
+
+	Pattern() : have_evaluatables(false) {}
 
 	// -------------------------------------------
 	/// The current set of clauses (beta redex context) being grounded.
@@ -80,33 +82,23 @@ struct Pattern
 	/// The original body containing the link (if any).
 	Handle           body;
 
-	/// Clauses that are never virtual. Set by unbundle_clauses().
-	HandleSeq        quoted_clauses;
-	/// Clauses that might be virtual. Set by unbundle_clauses().
-	HandleSeq        unquoted_clauses;
+	/// The mandatory clauses must be satisfied. This includes both
+	/// literal clauses and virtual clauses.
+	PatternTermSeq   pmandatory;
 
-	/// The mandatory clauses must be grounded.
-	HandleSeq        mandatory;
-
-	/// The optional clauses don't have to be grounded, but they might be.
-	/// This is where the absent clauses are held, so e.g. if these do get
-	/// grounded, they might be rejected (depending on the callback).
-	HandleSeq optionals;    // Optional clauses
+	/// The absent clauses must be ungroundable; they must literally
+	/// be absent. They are always literal, and are never evaluatable
+	/// or virtual.
+	PatternTermSeq absents;
 
 	/// The always (for-all) clauses have to always be grounded the same
 	/// way. Any grounding failure at all invalidates all other groundings.
-	HandleSeq always;       // ForAll clauses
+	PatternTermSeq always;
 
-	/// Black-box clauses. These are clauses that contain GPN's. These
-	/// have to drop into scheme or python to get evaluated, which means
-	/// that they will be slow.  So, we leave these for last, so that the
-	/// faster clauses can run first, and rule out un-needed evaluations.
-	HandleSet black;       // Black-box clauses
-
-	/// Evaluatable terms are those that hold a GroundedPredicateNode
-	/// (GPN) in them, or are stand-ins (e.g. GreaterThanLink, EqualLink).
-	HandleSet evaluatable_terms;   // smallest term that is evaluatable
-	HandleSet evaluatable_holders; // holds something evaluatable.
+	/// Evaluatable terms are those that need to be evalutated to
+	/// find out if they hold true. For example, GreaterThanLink,
+	/// and anything with a GroundedPredicateNode (GPN) in them.
+	bool have_evaluatables;
 
 	/// Defined terms are terms that are a DefinedPredicateNode (DPN)
 	/// or a DefineSchemaNode (DSN).
@@ -124,13 +116,7 @@ struct Pattern
 
 	/// For each clause, the list of variables that appear in that clause.
 	/// Used in conjunction with the `cacheable_multi` above.
-	HandleSeqMap clause_variables;
-
-	/// Maps; the value is the largest (evaluatable or executable)
-	/// term containing the variable. Its a multimap, because
-	/// a variable may appear in several different evaluatables.
-	std::unordered_multimap<Handle,Handle> in_evaluatable;
-	std::unordered_multimap<Handle,Handle> in_executable;
+	std::map<PatternTermPtr, HandleSeq> clause_variables;
 
 	/// Any given atom may appear in one or more clauses. Given an atom,
 	/// the connectivy map tells you what clauses it appears in. It

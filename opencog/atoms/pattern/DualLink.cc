@@ -54,19 +54,18 @@ void DualLink::init(void)
 	// ScopeLink::extract_variables(_outgoing);
 	_body = _outgoing[0];
 
-	_pat.mandatory.emplace_back(_body);
-	_fixed.emplace_back(_body);
+	PatternTermPtr root_term(make_term_tree(_body));
+	_pat.pmandatory.emplace_back(root_term);
+	_fixed.emplace_back(root_term);
 
 	_pat.body = _body;
 
-	make_term_trees();
-
 	// Well, there won't be any variables, but we still need
 	// to have an empty-set-per-clause to not trigger asserts
-	// in the PatternMatcherEngine. (... I'm confused about this.
-	// I'm thinking that the pattern matcher should be smarter
-	// than this ... but for now, let this slide...)
-	get_clause_variables(_outgoing);
+	// in the PatternMatcherEngine. We could make the engine
+	// smarter, at the cost of slowing down others. So we
+	// won't do that. We'll just hack it up here.
+	get_clause_variables(_pat.pmandatory);
 }
 
 DualLink::DualLink(const HandleSeq&& hseq, Type t)

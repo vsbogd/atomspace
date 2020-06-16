@@ -148,13 +148,9 @@ TermMatchMixin::~TermMatchMixin()
 }
 
 void TermMatchMixin::set_pattern(const Variables& vars,
-                                        const Pattern& pat)
+                                 const Pattern& pat)
 {
 	_vars = &vars;
-	_dynamic = &pat.evaluatable_terms;
-	_have_evaluatables = ! _dynamic->empty();
-	_have_variables = ! vars.varseq.empty();
-	_pattern_body = pat.body;
 }
 
 /* ======================================================== */
@@ -170,7 +166,7 @@ void TermMatchMixin::set_pattern(const Variables& vars,
  * By default, the nodes must be identical.
  */
 bool TermMatchMixin::node_match(const Handle& npat_h,
-                                       const Handle& nsoln_h)
+                                const Handle& nsoln_h)
 {
 	// If equality, then a match.
 	return npat_h == nsoln_h;
@@ -185,7 +181,7 @@ bool TermMatchMixin::node_match(const Handle& npat_h,
  * Return true if the nodes match, else return false.
  */
 bool TermMatchMixin::variable_match(const Handle& npat_h,
-                                           const Handle& nsoln_h)
+                                    const Handle& nsoln_h)
 {
 	// If the ungrounded term is not of type VariableNode, then just
 	// accept the match. This allows any kind of node types to be
@@ -200,7 +196,7 @@ bool TermMatchMixin::variable_match(const Handle& npat_h,
 }
 
 bool TermMatchMixin::scope_match(const Handle& npat_h,
-                                        const Handle& nsoln_h)
+                                 const Handle& nsoln_h)
 {
 	// If there are scoped vars, then accept anything that is
 	// alpha-equivalent. (i.e. equivalent after alpha-conversion)
@@ -228,7 +224,7 @@ bool TermMatchMixin::scope_match(const Handle& npat_h,
  * arity and the link types match.
  */
 bool TermMatchMixin::link_match(const PatternTermPtr& ptm,
-                                       const Handle& lsoln)
+                                const Handle& lsoln)
 {
 	const Handle& lpat = ptm->getHandle();
 
@@ -288,7 +284,7 @@ bool TermMatchMixin::link_match(const PatternTermPtr& ptm,
 }
 
 bool TermMatchMixin::post_link_match(const Handle& lpat,
-                                            const Handle& lgnd)
+                                     const Handle& lgnd)
 {
 	Type pattype = lpat->get_type();
 	if (_pat_bound_vars and _nameserver.isA(pattype, SCOPE_LINK))
@@ -297,11 +293,7 @@ bool TermMatchMixin::post_link_match(const Handle& lpat,
 		_gnd_bound_vars = nullptr;
 	}
 
-	// The if (STATE_LINK) below is a temp hack until we get a nicer
-	// solution, viz, get around to implementing executable terms in
-	// the search pattern. So: an executable term is anything that
-	// should be executed before the match is made... in this case,
-	// the StateLink has a single, unique closed-term value (or possibly
+	// The StateLink has a single, unique closed-term value (or possibly
 	// no value at all), and the check below discards all matches that
 	// aren't closed form, i.e. all StateLinks with a variable as state.
 	//
@@ -309,22 +301,13 @@ bool TermMatchMixin::post_link_match(const Handle& lpat,
 	// between the time that the search was started, and the time that
 	// we arrive here...
 	if (STATE_LINK == pattype)
-	{
 		return StateLinkCast(lgnd)->is_closed();
-	}
 
-	if (not _have_evaluatables) return true;
-	Handle hp(lpat);
-	if (_dynamic->find(hp) == _dynamic->end()) return true;
-
-	// We will find ourselves here whenever the link contains a
-	// GroundedPredicateNode. In this case, execute the node, and
-	// declare a match, or no match, depending on the resulting TV.
-	return EvaluationLink::crisp_evaluate(_as, lgnd);
+	return true;
 }
 
 void TermMatchMixin::post_link_mismatch(const Handle& lpat,
-                                               const Handle& lgnd)
+                                        const Handle& lgnd)
 {
 	Type pattype = lpat->get_type();
 	if (_pat_bound_vars and _nameserver.isA(pattype, SCOPE_LINK))
@@ -344,10 +327,10 @@ void TermMatchMixin::post_link_mismatch(const Handle& lpat,
 /// due to a need to handle QuoteLinks, and to handle ChoiceLinks and
 /// nested ChoiceLinks. So, sadly, this code is fairly complex. :-(
 bool TermMatchMixin::is_self_ground(const Handle& ptrn,
-                                           const Handle& grnd,
-                                           const GroundingMap& term_gnds,
-                                           const HandleSet& varset,
-                                           Quotation quotation)
+                                    const Handle& grnd,
+                                    const GroundingMap& term_gnds,
+                                    const HandleSet& varset,
+                                    Quotation quotation)
 {
 	Type ptype = ptrn->get_type();
 
@@ -384,7 +367,8 @@ bool TermMatchMixin::is_self_ground(const Handle& ptrn,
 		for (const Handle& ch: pset)
 		{
 			const auto pr = term_gnds.find(ch);
-			if (pr != term_gnds.end() or CHOICE_LINK == ch->get_type())
+			Type cht = ch->get_type();
+			if (pr != term_gnds.end() or CHOICE_LINK == cht)
 			{
 				if (is_self_ground(ch, grnd, term_gnds, varset, quotation))
 					return true;
@@ -460,8 +444,8 @@ bool TermMatchMixin::is_self_ground(const Handle& ptrn,
  * the "normal" path to evaluate_sentence(). So may as well do it here.
  */
 bool TermMatchMixin::clause_match(const Handle& ptrn,
-                                         const Handle& grnd,
-                                         const GroundingMap& term_gnds)
+                                  const Handle& grnd,
+                                  const GroundingMap& term_gnds)
 {
 	// Is the pattern same as the ground?
 	// if (ptrn == grnd) return false;
@@ -514,8 +498,8 @@ bool TermMatchMixin::clause_match(const Handle& ptrn,
  *   If no ground is found, return true.
  */
 bool TermMatchMixin::optional_clause_match(const Handle& ptrn,
-                                                  const Handle& grnd,
-                                                  const GroundingMap& term_gnds)
+                                           const Handle& grnd,
+                                           const GroundingMap& term_gnds)
 {
 	// If any grounding at all was found, reject it.
 	if (grnd)
@@ -559,16 +543,17 @@ bool TermMatchMixin::optional_clause_match(const Handle& ptrn,
  * used by the pattern matcher.) The AlwaysLink must always be
  * satsifed, every time it is called, from the begining of the
  * search to the end.  The AlwaysLinks is satsified whenever
- * ptrn==grnd, and otherwise, if fails. That is, if ptrn==nullptr
+ * grnd != null, and otherwise, if fails. That is, if grnd==nullptr
  * then there is some grounding of (all of) the other clauses of
  * the pattern, with AlwaysLink failing to be satisfied. Reject
  * this case, now and forever. (viz, this is stateful.)
  */
 bool TermMatchMixin::always_clause_match(const Handle& ptrn,
-                                                const Handle& grnd,
-                                                const GroundingMap& term_gnds)
+                                         const Handle& grnd,
+                                         const GroundingMap& term_gnds)
 {
 	return grnd != nullptr;
+		// and not is_self_ground(ptrn, grnd, term_gnds, _vars->varset);
 }
 
 /* ======================================================== */
@@ -725,16 +710,15 @@ bool TermMatchMixin::eval_term(const Handle& virt,
  * variables to values.
  */
 bool TermMatchMixin::eval_sentence(const Handle& top,
-                                          const GroundingMap& gnds)
+                                   const GroundingMap& gnds)
 {
 	DO_LOG({LAZY_LOG_FINE << "Enter eval_sentence CB with top=" << std::endl
 	              << top->to_short_string() << std::endl
 	              << "grounds=" << gnds << std::endl;})
 
-	if (top->get_type() == VARIABLE_NODE)
-	{
+	Type term_type = top->get_type();
+	if (VARIABLE_NODE == term_type)
 		return eval_term(top, gnds);
-	}
 
 	if (not top->is_link())
 		throw InvalidParamException(TRACE_INFO,
@@ -743,7 +727,6 @@ bool TermMatchMixin::eval_sentence(const Handle& top,
 
 	const HandleSeq& oset = top->getOutgoingSet();
 
-	Type term_type = top->get_type();
 	if (OR_LINK == term_type or SEQUENTIAL_OR_LINK == term_type)
 	{
 		for (const Handle& h : oset)
@@ -787,9 +770,9 @@ bool TermMatchMixin::eval_sentence(const Handle& top,
 	{
 		// If *any* clause in the AbsentLink has been grounded, then
 		// return false.  That is, AbsentLink behaves like an AndLink
-		// for term-absence.  Note that this conflicts with
-		// PatternLink::extract_optionals(), which insists on an arity
-		// of one. Viz "must all be absent"? or "if any are absent"?
+		// for term-absence.  Note that this conflicts with static
+		// analysis in PatternLink, which insists on an arity of one.
+		// Viz "must all be absent"? or "if any are absent"?
 		//
 		// AbsentLink is same as NotLink PresentLink.
 		for (const Handle& h : oset)
@@ -816,6 +799,9 @@ bool TermMatchMixin::eval_sentence(const Handle& top,
 		// determined.  Did those higher layers actually explore all
 		// possibilities?  And if they failed to do so, can we even do
 		// anything about that here? Seems like we can't do anything...
+		//
+		// XXX FIXME: worse: this cannot possibly be right when
+		// the ChoiceLink contains presentLinks.
 		for (const Handle& h : oset)
 		{
 			if (gnds.end() == gnds.find(h)) continue;

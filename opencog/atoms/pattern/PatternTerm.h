@@ -97,6 +97,9 @@ protected:
 	// variables, but this flag will not be set.
 	bool _has_bound_var;
 
+	// As above, but zero terms deep. This one is the variable.
+	bool _is_bound_var;
+
 	// True if any pattern subtree rooted in this tree node contains
 	// an GlobNode. Trees without any GlobNodes can be searched in a
 	// straight-forward manner; those with them need to have all
@@ -106,15 +109,53 @@ protected:
 	// As above, but only one level deep.
 	bool _has_globby_var;
 
+	// As above, but zero levels deep. This is a glob.
+	bool _is_globby_var;
+
 	// As above, but for evaluatables.
 	bool _has_any_evaluatable;
 	bool _has_evaluatable;
+
+	// An evaluatable term, with two or more variables in it.
+	// In general, these bridge across components.
+	bool _is_virtual;
 
 	// True if any pattern subtree rooted in this tree node contains
 	// an unordered link. Trees without any unordered links can be
 	// searched in a straight-forward manner; those with them need to
 	// have all possible permutations explored.
 	bool _has_any_unordered_link;
+
+	// True if quoted, or if it should be taken literally, and not
+	// evaluated or interpreted. Usually, this means that this term
+	// is underneath a PresentLink, an AbsentLink, a ChoiceLink, or
+	// a QuoteLink. This applies only to non-variables (as variables
+	// are still variables, unless they are quoted or scope-hidden.)
+	bool _is_literal;
+
+	// True if this contains a set of subterms, all of which must be
+	// simultaneously present in the pattern. All of the sub-terms are
+	// necessarily literal. This corresponds to PRESENT_LINK in the
+	// default interpretation.
+	bool _is_present;
+
+	// True if this is a term that must be absent in a given grounding.
+	// This corresponds to the ABSENT_LINK in the default interpretation,
+	// and is effectively the same thing as NOT_LINK(PRESENT_LINK).
+	bool _is_absent;
+
+	// True if this contains a set of subterms, one of which must be
+	// present in the pattern. All of the sub-terms are present, or
+	// are literal. This corresponds to CHOICE_LINK in the default
+	// interpretation; it can also be an OR_LINK when that OR_LINK
+	// is in a boolean evaluatable context.
+	bool _is_choice;
+
+	// True if this is a term that must be present in every successful
+	// patten grounding. There are no groundings at all, unless this
+	// term is in each and every one of them. This corresponds to
+	// the ALWAYS_LINK in the default interpretation.
+	bool _is_always;
 
 	void addAnyBoundVar();
 	void addAnyGlobbyVar();
@@ -123,40 +164,67 @@ protected:
 public:
 	static const PatternTermPtr UNDEFINED;
 
-	PatternTerm();
-
+	PatternTerm(void);
 	PatternTerm(const PatternTermPtr& parent, const Handle& h);
 
 	const Handle& getHandle() const noexcept { return _handle; }
 
 	PatternTermPtr getParent() const noexcept { return _parent; }
 	bool isDescendant(const PatternTermPtr&) const;
+	PatternTermPtr getRoot() noexcept {
+		PatternTermPtr root = shared_from_this();
+		while (root->_parent->_handle) root = _parent;
+		return root;
+	}
 
-	void addOutgoingTerm(const PatternTermPtr& ptm);
+	PatternTermPtr addOutgoingTerm(const Handle&);
 	PatternTermSeq getOutgoingSet() const;
 
 	Arity getArity() const { return _outgoing.size(); }
 	PatternTermPtr getOutgoingTerm(Arity pos) const;
 
-	const Handle& getQuote() const noexcept { return _quote; }
+	const Handle& getQuote() const noexcept {
+		return isQuoted() ?  _quote : _handle; }
 	Quotation& getQuotation() { return _quotation; };
 	const Quotation& getQuotation() const noexcept { return _quotation; }
 	bool isQuoted() const { return _quotation.is_quoted(); }
 
+	void markLiteral();
+	bool isLiteral() const { return _is_literal; }
+
+	void markPresent();
+	bool isPresent() const { return _is_present; }
+
+	void markAbsent();
+	bool isAbsent() const { return _is_absent; }
+
+	void markChoice();
+	bool isChoice() const { return _is_choice; }
+
+	void markAlways();
+	bool isAlways() const { return _is_always; }
+
 	void addBoundVariable();
 	bool hasAnyBoundVariable() const noexcept { return _has_any_bound_var; }
 	bool hasBoundVariable() const noexcept { return _has_bound_var; }
+	bool isBoundVariable() const noexcept { return _is_bound_var; }
 
 	void addGlobbyVar();
 	bool hasAnyGlobbyVar() const noexcept { return _has_any_globby_var; }
 	bool hasGlobbyVar() const noexcept { return _has_globby_var; }
+	bool isGlobbyVar() const noexcept { return _is_globby_var; }
 
 	void addEvaluatable();
 	bool hasAnyEvaluatable() const noexcept { return _has_any_evaluatable; }
 	bool hasEvaluatable() const noexcept { return _has_evaluatable; }
 
+	void markVirtual();
+	bool isVirtual() const noexcept { return _is_virtual; }
+
 	void addUnorderedLink();
 	bool hasUnorderedLink() const noexcept { return _has_any_unordered_link; }
+	bool isUnorderedLink() const noexcept { return _handle->is_unordered_link(); }
+	bool isLink() const noexcept { return _handle->is_link(); }
 
 	bool operator==(const PatternTerm&);
 
@@ -164,6 +232,11 @@ public:
 	// See http://stackoverflow.com/questions/16734783 for explanation.
 	std::string to_string() const;
 	std::string to_string(const std::string& indent) const;
+	std::string to_short_string() const;
+	std::string to_short_string(const std::string& indent) const;
+	std::string to_full_string() const;
+	std::string to_full_string(const std::string& indent) const;
+	std::string flag_string() const;
 };
 
 #define createPatternTerm std::make_shared<PatternTerm>
@@ -173,6 +246,8 @@ public:
 std::string oc_to_string(const PatternTerm& pt,
                          const std::string& indent=empty_string);
 std::string oc_to_string(const PatternTermPtr& pt,
+                         const std::string& indent=empty_string);
+std::string oc_to_string(const PatternTermSeq& pt,
                          const std::string& indent=empty_string);
 
 } // namespace opencog

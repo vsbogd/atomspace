@@ -36,16 +36,20 @@
 
 namespace opencog {
 
-
-// Make sure that variables can be found in the clauses.
-// See C file for description
-bool remove_constants(const HandleSet& vars, Pattern& pat);
-
 // Return true iff the clause is evaluatable.
 bool can_evaluate(const Handle& clause);
 
-// Return true iff the clause is constant.
+// Return true iff the clause is constant. That is iff
+//
+// 1. clause is not evaluatable
+//
+// 2. and none of its free variables are in vars, as only the
+//    variables in vars should be interpreted as variables, the others
+//    should be interpreted as constants.
 bool is_constant(const HandleSet& vars, const Handle& clause);
+
+// Return true iff the clause is a "black box" evaluatable.
+bool is_black_box(const Handle& clause);
 
 // See C file for description
 void get_connected_components(const HandleSet& vars,
@@ -54,8 +58,8 @@ void get_connected_components(const HandleSet& vars,
                               HandleSetSeq& compvars);
 
 void get_bridged_components(const HandleSet& vars,
-                            const HandleSeq& clauses,
-                            const HandleSeq& opts,
+                            const PatternTermSeq& clauses,
+                            const PatternTermSeq& opts,
                             HandleSeqSeq& compset,
                             HandleSetSeq& compvars);
 

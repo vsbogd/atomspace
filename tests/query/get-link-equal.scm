@@ -1,3 +1,6 @@
+;;
+;; get-link-equal.scm
+;;
 ;; Test quotation consumption in EqualLink
 ;;
 ;; The main clause of `gl`
@@ -51,6 +54,8 @@
 ;;
 ;; thus falsely discarding the match.
 
+(use-modules (opencog) (opencog exec))
+
 (define top
   (Lambda
     (Variable "$X")
@@ -83,6 +88,8 @@
             (UnquoteLink
               (VariableNode "$body")))))))
 )
+
+; (cog-execute! gl)
 
 (define expect
   (SetLink
